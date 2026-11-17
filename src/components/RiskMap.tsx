@@ -1,5 +1,10 @@
 "use client";
 
+// Calcite design tokens (colours, modes) and map-component base styles.
+// Without these the component panels (e.g. basemap gallery) render
+// without backgrounds.
+import "@esri/calcite-components/main.css";
+import "@arcgis/map-components/main.css";
 import "@arcgis/map-components/components/arcgis-map";
 import "@arcgis/map-components/components/arcgis-zoom";
 import "@arcgis/map-components/components/arcgis-home";
