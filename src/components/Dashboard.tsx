@@ -146,7 +146,8 @@ export default function Dashboard() {
   const pick = (p: Picked) => {
     const seq = ++pickSeq.current;
     setPicked(p);
-    setSelectedFid(soumOfPicked(rows, p)?.fid ?? null);
+    // Only the object is highlighted; its soum is shown in the detail panel.
+    setSelectedFid(null);
     setMobilePanel("results");
     if (p.mode === "v") {
       setPickedVul(p.attrs);
@@ -452,6 +453,7 @@ export default function Dashboard() {
               matchedCodes={matchedCodes}
               overlays={overlays}
               selectedFid={selectedFid}
+              selectedCode={selected ? Number(selected.code) : null}
               onSelect={(fid) => {
                 clearPicked();
                 setSelectedFid(fid);

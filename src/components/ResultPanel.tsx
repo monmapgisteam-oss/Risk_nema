@@ -9,8 +9,6 @@ import {
   NODATA_COLOR,
   NOEXP_COLOR,
   classField,
-  overlayLabel,
-  parseClass,
   scoreField,
   type Filters,
   type HazardId,
@@ -19,6 +17,7 @@ import {
 } from "@/lib/riskConfig";
 import styles from "./Dashboard.module.css";
 import Icon from "./Icon";
+import ObjectDetail from "./ObjectDetail";
 
 type Props = {
   filters: Filters;
@@ -136,121 +135,6 @@ function Detail({
             );
           })}
         </div>
-      )}
-    </div>
-  );
-}
-
-function ObjectDetail({
-  picked,
-  soum,
-  vul,
-  onClose,
-}: {
-  picked: Picked;
-  soum: SoumRow | null;
-  vul: Record<string, unknown> | null;
-  onClose: () => void;
-}) {
-  const { overlay: o, attrs, mode } = picked;
-  const isObject = o.geometry !== "polygon";
-  const hazards = HAZARDS.filter((h) => h.id !== "all");
-  const name = String(attrs[o.nameField] ?? "").trim();
-  const place = soum
-    ? [soum.soum_name, soum.aimag_name].filter(Boolean).join(", ")
-    : "";
-
-  // Vulnerability class assessed for the object itself (point / line layers).
-  const objV = (h: string) =>
-    isObject && vul ? parseClass(vul[`${h}_cvi`] ?? vul[`cvi_${h}`]) : null;
-  // Class of this element in the soum the object belongs to.
-  const elem = (h: string, m: "v" | "e") =>
-    (soum?.[`${h}_${o.el}_${m}`] as number | null | undefined) ??
-    (mode === m ? parseClass(attrs[`${h}_${o.el}_el`]) : null);
-  const hasObj = hazards.some((h) => objV(h.id) != null);
-  const hasElem = hazards.some(
-    (h) => elem(h.id, "v") != null || elem(h.id, "e") != null,
-  );
-  // Elements without an assessment of their own fall back to the soum totals.
-  const soumV = (h: string) =>
-    hasElem ? elem(h, "v") : ((soum?.[`${h}_v_cls`] as number) ?? null);
-  const soumE = (h: string) =>
-    hasElem ? elem(h, "e") : ((soum?.[`${h}_e_cls`] as number) ?? null);
-  const hasRows = hasObj || hasElem || !!soum;
-
-  const mhE = parseClass(attrs.mh_expclas ?? attrs.mh_expcl ?? attrs.mh_el345);
-  const mhV = isObject && vul ? parseClass(vul.cvi_mhei ?? vul.cvi) : null;
-
-  return (
-    <div className={styles.detail}>
-      <div className={styles.detailHead}>
-        <div>
-          <strong>{isObject && name ? name : overlayLabel(o)}</strong>
-          <span>
-            {[isObject && name ? overlayLabel(o) : "", place]
-              .filter(Boolean)
-              .join(" · ")}
-          </span>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Хаах">
-          ×
-        </button>
-      </div>
-      {(mhV != null || mhE != null) && (
-        <div className={styles.mhRow}>
-          <span>Олон аюул</span>
-          {mhV != null && (
-            <span>
-              Эмзэг <Cell cls={mhV} value={mhV} />
-            </span>
-          )}
-          {mhE != null && (
-            <span>
-              Өртөх <Cell cls={mhE} value={mhE} />
-            </span>
-          )}
-        </div>
-      )}
-      {hasRows && (
-        <table className={`${styles.matrix} ${styles.objectMatrix}`}>
-          <thead>
-            <tr>
-              <th />
-              {hasObj && (
-                <th>
-                  Эмзэг<small>объект</small>
-                </th>
-              )}
-              <th>
-                Эмзэг<small>сум</small>
-              </th>
-              <th>
-                Өртөх<small>сум</small>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {hazards.map((h) => (
-              <tr key={h.id}>
-                <td>{h.label}</td>
-                {hasObj && (
-                  <td>
-                    <Cell cls={objV(h.id)} value={objV(h.id)} />
-                  </td>
-                )}
-                <td>
-                  <Cell cls={soumV(h.id)} value={soumV(h.id)} />
-                </td>
-                <td>
-                  <Cell cls={soumE(h.id)} value={soumE(h.id)} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {hasRows && !hasElem && (
-        <span className={styles.detailNote}>Сумын нийт үнэлгээ</span>
       )}
     </div>
   );

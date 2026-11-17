@@ -8,7 +8,6 @@ import "@arcgis/map-components/main.css";
 import "@arcgis/map-components/components/arcgis-map";
 import "@arcgis/map-components/components/arcgis-zoom";
 import "@arcgis/map-components/components/arcgis-home";
-import "@arcgis/map-components/components/arcgis-basemap-toggle";
 import "@arcgis/map-components/components/arcgis-expand";
 import "@arcgis/map-components/components/arcgis-basemap-gallery";
 
@@ -16,7 +15,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import FeatureFilter from "@arcgis/core/layers/support/FeatureFilter";
 import UniqueValueRenderer from "@arcgis/core/renderers/UniqueValueRenderer";
+import SimpleRenderer from "@arcgis/core/renderers/SimpleRenderer";
 import SimpleFillSymbol from "@arcgis/core/symbols/SimpleFillSymbol";
+import HighlightOptions from "@arcgis/core/views/support/HighlightOptions";
 import Viewpoint from "@arcgis/core/Viewpoint";
 import type Extent from "@arcgis/core/geometry/Extent";
 import type MapView from "@arcgis/core/views/MapView";
@@ -42,6 +43,7 @@ import Icon from "./Icon";
 
 const HOME = { center: [103.8, 46.9], zoom: 5 };
 const CLASSES = [1, 2, 3, 4, 5];
+const SOUM_OUTLINE_HIGHLIGHT = "soum-outline";
 
 type Props = {
   mode: Mode;
@@ -52,6 +54,7 @@ type Props = {
   matchedCodes: number[] | null; // soum codes of the same soums
   overlays: string[]; // overlay ids
   selectedFid: number | null;
+  selectedCode: number | null; // soum code of selectedFid
   onSelect: (fid: number | null) => void;
   picked: Picked | null;
   onPick: (picked: Picked) => void;
@@ -76,6 +79,18 @@ function soumRenderer(field: string, showNoExp: boolean) {
   });
 }
 
+function soumBoundaryRenderer() {
+  return new SimpleRenderer({
+    label: "Сумын хил",
+    symbol: new SimpleFillSymbol({
+      // A transparent solid fill preserves clicks inside the soum polygon.
+      style: "solid",
+      color: [0, 0, 0, 0],
+      outline: { color: [226, 232, 240, 0.65], width: 0.65 },
+    }),
+  });
+}
+
 type OverlayEntry = { layer: FeatureLayer; overlay: Overlay; mode: Mode };
 
 export default function RiskMap({
@@ -87,6 +102,7 @@ export default function RiskMap({
   matchedCodes,
   overlays,
   selectedFid,
+  selectedCode,
   onSelect,
   picked,
   onPick,
@@ -98,6 +114,20 @@ export default function RiskMap({
   const fullExtent = useRef<Extent | null>(null);
   const [view, setView] = useState<MapView | null>(null);
   const [layerView, setLayerView] = useState<FeatureLayerView | null>(null);
+  const [classifiedFields, setClassifiedFields] = useState<
+    Record<string, string>
+  >({});
+  const selectedOverlays = OVERLAYS[mode].filter((o) =>
+    overlays.includes(o.id),
+  );
+  const hasOverlays = selectedOverlays.length > 0;
+  const classifiedOverlays = selectedOverlays.filter(
+    (o) => classifiedFields[`${mode}:${o.id}`] === `${hazard}_${o.el}_el`,
+  );
+  const showClassLegend = !hasOverlays || classifiedOverlays.length > 0;
+  const showNoExpLegend = hasOverlays
+    ? classifiedOverlays.some((o) => o.geometry === "polygon")
+    : showNoExp;
   const onSelectRef = useRef(onSelect);
   const onPickRef = useRef(onPick);
   useEffect(() => {
@@ -122,6 +152,13 @@ export default function RiskMap({
   useEffect(() => {
     if (!view) return;
     view.map?.add(soumLayer, 0);
+    const outlineHighlight = new HighlightOptions({
+      name: SOUM_OUTLINE_HIGHLIGHT,
+      color: "#b8ddf7",
+      haloOpacity: 1,
+      fillOpacity: 0,
+    });
+    view.highlights.add(outlineHighlight);
     let alive = true;
     view.set("constraints.snapToZoom", false);
     view
@@ -147,10 +184,13 @@ export default function RiskMap({
       const hit = await view.hitTest(event, {
         include: [soumLayer, ...entries.map((e) => e.layer)],
       });
-      // Results come topmost first: an element feature wins over the soum.
+      // Results come topmost first: a point/line feature wins over the soum.
+      // Polygon element layers are the 339 soum polygons themselves, so a
+      // click on them selects the soum underneath.
       for (const r of hit.results) {
         if (r.type !== "graphic") continue;
         const entry = entries.find((e) => e.layer === r.graphic.layer);
+        if (entry?.overlay.geometry === "polygon") continue;
         if (entry) {
           onPickRef.current({
             mode: entry.mode,
@@ -170,12 +210,17 @@ export default function RiskMap({
     return () => {
       alive = false;
       click.remove();
+      view.highlights.remove(outlineHighlight);
     };
   }, [view, soumLayer]);
 
   useEffect(() => {
-    soumLayer.set("renderer", soumRenderer(field, showNoExp));
-  }, [soumLayer, field, showNoExp]);
+    soumLayer.set(
+      "renderer",
+      hasOverlays ? soumBoundaryRenderer() : soumRenderer(field, showNoExp),
+    );
+    soumLayer.set("title", hasOverlays ? "Сумын хил" : "Сумын үнэлгээ");
+  }, [soumLayer, field, showNoExp, hasOverlays]);
 
   // Hide soums that do not match the filters.
   useEffect(() => {
@@ -192,9 +237,38 @@ export default function RiskMap({
 
   useEffect(() => {
     if (!layerView || selectedFid == null) return;
-    const h = layerView.highlight(selectedFid);
+    const h = layerView.highlight(selectedFid, {
+      name: hasOverlays ? SOUM_OUTLINE_HIGHLIGHT : "default",
+    });
     return () => h.remove();
-  }, [layerView, selectedFid]);
+  }, [layerView, selectedFid, hasOverlays]);
+
+  // Polygon element layers cover the soums, so highlight the soum there too.
+  useEffect(() => {
+    if (!view || selectedCode == null) return;
+    const handles: { remove(): void }[] = [];
+    let alive = true;
+    for (const { layer, overlay } of overlayLayers.current.values()) {
+      if (overlay.geometry !== "polygon") continue;
+      view
+        .whenLayerView(layer)
+        .then((lv) =>
+          lv
+            .queryObjectIds({ where: overlayWhere(overlay, [selectedCode]) })
+            .then((ids) => {
+              if (alive && ids.length)
+                handles.push(
+                  lv.highlight(ids, { name: SOUM_OUTLINE_HIGHLIGHT }),
+                );
+            }),
+        )
+        .catch(() => {});
+    }
+    return () => {
+      alive = false;
+      handles.forEach((h) => h.remove());
+    };
+  }, [view, selectedCode, mode, overlays]);
 
   // Highlight the picked element feature.
   useEffect(() => {
@@ -275,6 +349,11 @@ export default function RiskMap({
           const f = `${hazard}_${o.el}_el`;
           const has = target.fields.some((x) => x.name === f);
           target.renderer = overlayRenderer(o, has ? f : null);
+          setClassifiedFields((current) =>
+            current[key] === (has ? f : "")
+              ? current
+              : { ...current, [key]: has ? f : "" },
+          );
         })
         .catch(() => {});
     }
@@ -305,7 +384,6 @@ export default function RiskMap({
     >
       <arcgis-zoom slot="top-left" />
       <arcgis-home ref={homeRef} slot="top-left" />
-      <arcgis-basemap-toggle slot="bottom-left" next-basemap="gray-vector" />
       <button
         type="button"
         slot="top-left"
@@ -324,59 +402,64 @@ export default function RiskMap({
         <arcgis-basemap-gallery />
       </arcgis-expand>
       <div slot="bottom-right" className={styles.legend}>
-        {overlays.length > 0 && (
+        {hasOverlays && (
           <details className={styles.objectLegend} open>
             <summary>
               Объектын тэмдэглэгээ <span>{overlays.length}</span>
             </summary>
             <div className={styles.objectLegendList}>
-              {OVERLAYS[mode]
-                .filter((o) => overlays.includes(o.id))
-                .map((o) => (
-                  <div key={o.id} className={styles.objectLegendItem}>
-                    {/* The preview is generated from the same symbols as the map. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={overlayLegendSvg(o)}
-                      alt=""
-                      width={26}
-                      height={26}
-                    />
-                    <span>{overlayLabel(o)}</span>
-                  </div>
-                ))}
+              {selectedOverlays.map((o) => (
+                <div key={o.id} className={styles.objectLegendItem}>
+                  {/* The preview is generated from the same symbols as the map. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={overlayLegendSvg(o)}
+                    alt=""
+                    width={26}
+                    height={26}
+                  />
+                  <span>{overlayLabel(o)}</span>
+                </div>
+              ))}
             </div>
             <p className={styles.legendNote}>
-              {hazard === "all"
-                ? "Дүрс, өнгө, хээгээр объектын төрлийг ялгана."
-                : "Дүрс, хээ нь төрлийг; ангилалтай объектын өнгө нь үнэлгээг илэрхийлнэ."}
+              {classifiedOverlays.length
+                ? "Дүрс, хээ нь төрлийг; ангилалтай объектын өнгө нь үнэлгээг илэрхийлнэ."
+                : "Дүрс, өнгө, хээгээр объектын төрлийг ялгана."}
             </p>
-            {OVERLAYS[mode].some(
-              (o) => overlays.includes(o.id) && o.geometry === "polygon",
-            ) && (
+            <p className={styles.legendNote}>
+              Сумын хил нь зөвхөн байршлын лавлагаа.
+            </p>
+            {selectedOverlays.some((o) => o.geometry === "polygon") && (
               <p className={styles.legendNote}>
                 Талбайн давхарга: сумын түвшний үзүүлэлт.
               </p>
             )}
           </details>
         )}
-        <strong>Үнэлгээний ангилал</strong>
-        {CLASSES.map((c) => (
-          <span key={c} className={styles.legendItem}>
-            <i style={{ background: CLASS_COLORS[c] }} />
-            {CLASS_LABELS[c]}
-          </span>
-        ))}
-        {showNoExp && (
-          <span className={styles.legendItem}>
-            <i style={{ background: NOEXP_COLOR }} />
-            {CLASS_LABELS[0]}
-          </span>
+        {showClassLegend && (
+          <>
+            <strong>
+              {hasOverlays ? "Объектын үнэлгээ" : "Сумын үнэлгээ"}
+            </strong>
+            {CLASSES.map((c) => (
+              <span key={c} className={styles.legendItem}>
+                <i style={{ background: CLASS_COLORS[c] }} />
+                {CLASS_LABELS[c]}
+              </span>
+            ))}
+            {showNoExpLegend && (
+              <span className={styles.legendItem}>
+                <i style={{ background: NOEXP_COLOR }} />
+                {CLASS_LABELS[0]}
+              </span>
+            )}
+            <span className={styles.legendItem}>
+              <i style={{ background: NODATA_COLOR }} />
+              Өгөгдөлгүй
+            </span>
+          </>
         )}
-        <span className={styles.legendItem}>
-          <i style={{ background: NODATA_COLOR }} />
-          Өгөгдөлгүй
-        </span>
       </div>
     </arcgis-map>
   );

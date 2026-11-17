@@ -503,7 +503,7 @@
 }
 .bar {
   display: grid;
-  grid-template-columns: 66px minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(66px, 22%) minmax(0, 1fr) minmax(28px, 8%);
   align-items: center;
   gap: 9px;
   padding: 6px 0;
@@ -691,9 +691,19 @@
 .matrix td {
   padding: 3px 0;
 }
+/* Value columns share the space left by the name column, so they stretch
+   with the panel width. */
+.matrix th:first-child,
+.matrix td:first-child {
+  width: 38%;
+}
 .matrix td + td {
-  width: 49px;
+  padding-left: 4px;
   text-align: center;
+}
+.matrix .cell {
+  display: block;
+  width: 100%;
 }
 .matrix tbody tr {
   cursor: pointer;
