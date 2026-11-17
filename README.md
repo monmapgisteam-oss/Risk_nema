@@ -34,5 +34,5 @@ src/
 
 ## Өгөгдөл (дараагийн шат)
 
-`VulExp_bySoum_AllHazards` (339 сум × 10 аюул × V/E) өгөгдөл feature service болж
-publish хийгдэх хүртэл shapefile → GeoJSON хувиргалтаар түр холбогдоно.
+Өгөгдөл `arcgis.ubhub.mn`-ийн feature service-ээс шууд уншигдана (`src/lib/riskConfig.ts`):
+`NEMA_VulExp_bySoum_Full` (сумын 339 полигон, будалт ба шүүлтүүр), `Vul_risk` / `exp_risk` (элементийн цэг, шугам давхарга).
