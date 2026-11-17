@@ -1,0 +1,9 @@
+.loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #5b6b7b;
+  font-size: 14px;
+  background: var(--bg);
+}

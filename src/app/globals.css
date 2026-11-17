@@ -1,0 +1,27 @@
+:root {
+  --bg: #f4f6f8;
+  --fg: #1a1f24;
+  --header-bg: #0f2a44;
+  --header-fg: #ffffff;
+  --accent: #e4a11b;
+  --muted: #9fb3c8;
+  --header-h: 56px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: var(--fg);
+  background: var(--bg);
+  font-family: var(--font-geist-sans), "Segoe UI", Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
