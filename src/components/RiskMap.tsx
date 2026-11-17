@@ -14,31 +14,31 @@ import "@arcgis/map-components/components/arcgis-basemap-gallery";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
-import FeatureEffect from "@arcgis/core/layers/support/FeatureEffect";
 import FeatureFilter from "@arcgis/core/layers/support/FeatureFilter";
-import PopupTemplate from "@arcgis/core/PopupTemplate";
 import UniqueValueRenderer from "@arcgis/core/renderers/UniqueValueRenderer";
-import SimpleRenderer from "@arcgis/core/renderers/SimpleRenderer";
 import SimpleFillSymbol from "@arcgis/core/symbols/SimpleFillSymbol";
-import SimpleMarkerSymbol from "@arcgis/core/symbols/SimpleMarkerSymbol";
-import SimpleLineSymbol from "@arcgis/core/symbols/SimpleLineSymbol";
+import Viewpoint from "@arcgis/core/Viewpoint";
+import type Extent from "@arcgis/core/geometry/Extent";
 import type MapView from "@arcgis/core/views/MapView";
 import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
 
 import {
   CLASS_COLORS,
   CLASS_LABELS,
-  ELEMENTS,
-  HAZARDS,
   NODATA_COLOR,
   NOEXP_COLOR,
   OVERLAYS,
   OVERLAY_SERVICE,
   SOUM_LAYER_URL,
+  overlayLabel,
+  overlayWhere,
   type Mode,
   type Overlay,
+  type Picked,
 } from "@/lib/riskConfig";
+import { overlayLegendSvg, overlayRenderer } from "@/lib/mapSymbols";
 import styles from "./RiskMap.module.css";
+import Icon from "./Icon";
 
 const HOME = { center: [103.8, 46.9], zoom: 5 };
 const CLASSES = [1, 2, 3, 4, 5];
@@ -49,18 +49,23 @@ type Props = {
   field: string;
   showNoExp: boolean;
   matchedIds: number[] | null; // null = no filter
-  overlays: string[];
+  matchedCodes: number[] | null; // soum codes of the same soums
+  overlays: string[]; // overlay ids
   selectedFid: number | null;
   onSelect: (fid: number | null) => void;
+  picked: Picked | null;
+  onPick: (picked: Picked) => void;
   focus: { ids: number[] | null; key: number };
+  onFocusMatched: () => void;
 };
 
+const fill = (color: string) =>
+  new SimpleFillSymbol({
+    color,
+    outline: { color: [255, 255, 255, 0.9], width: 0.5 },
+  });
+
 function soumRenderer(field: string, showNoExp: boolean) {
-  const fill = (color: string) =>
-    new SimpleFillSymbol({
-      color,
-      outline: { color: [255, 255, 255, 0.9], width: 0.5 },
-    });
   return new UniqueValueRenderer({
     field,
     defaultSymbol: fill(NODATA_COLOR),
@@ -71,28 +76,7 @@ function soumRenderer(field: string, showNoExp: boolean) {
   });
 }
 
-function overlaySymbol(o: Overlay, color: string, neutral: boolean) {
-  return o.geometry === "line"
-    ? new SimpleLineSymbol({ color, width: neutral ? 1.2 : 2 })
-    : new SimpleMarkerSymbol({
-        color,
-        size: neutral ? 5 : 7,
-        outline: { color: neutral ? "#ffffff" : "#1a1f24", width: 0.6 },
-      });
-}
-
-function overlayRenderer(o: Overlay, field: string | null) {
-  if (!field)
-    return new SimpleRenderer({ symbol: overlaySymbol(o, "#0f2a44", true) });
-  return new UniqueValueRenderer({
-    field,
-    defaultSymbol: overlaySymbol(o, "#8a96a3", true),
-    uniqueValueInfos: CLASSES.map((c) => ({
-      value: c,
-      symbol: overlaySymbol(o, CLASS_COLORS[c], false),
-    })),
-  });
-}
+type OverlayEntry = { layer: FeatureLayer; overlay: Overlay; mode: Mode };
 
 export default function RiskMap({
   mode,
@@ -100,45 +84,88 @@ export default function RiskMap({
   field,
   showNoExp,
   matchedIds,
+  matchedCodes,
   overlays,
   selectedFid,
   onSelect,
+  picked,
+  onPick,
   focus,
+  onFocusMatched,
 }: Props) {
   const mapRef = useRef<HTMLArcgisMapElement | null>(null);
+  const homeRef = useRef<HTMLArcgisHomeElement | null>(null);
+  const fullExtent = useRef<Extent | null>(null);
   const [view, setView] = useState<MapView | null>(null);
   const [layerView, setLayerView] = useState<FeatureLayerView | null>(null);
   const onSelectRef = useRef(onSelect);
+  const onPickRef = useRef(onPick);
   useEffect(() => {
     onSelectRef.current = onSelect;
+    onPickRef.current = onPick;
   });
 
   const soumLayer = useMemo(
     () =>
       new FeatureLayer({
         url: SOUM_LAYER_URL,
+        title: "Сумын үнэлгээ",
         outFields: ["fid"],
         popupEnabled: false,
         opacity: 0.82,
       }),
     [],
   );
-  const overlayLayers = useRef(new Map<string, FeatureLayer>());
+  const overlayLayers = useRef(new Map<string, OverlayEntry>());
 
   // Add the soum layer and wire map clicks once the view is ready.
   useEffect(() => {
     if (!view) return;
     view.map?.add(soumLayer, 0);
     let alive = true;
-    view.whenLayerView(soumLayer).then((lv) => {
-      if (alive) setLayerView(lv);
-    });
+    view.set("constraints.snapToZoom", false);
+    view
+      .whenLayerView(soumLayer)
+      .then((lv) => {
+        if (alive) setLayerView(lv);
+      })
+      .catch(() => {});
+    soumLayer
+      .queryExtent()
+      .then(({ extent }) => {
+        if (!alive || !extent) return;
+        fullExtent.current = extent.expand(1.12);
+        if (homeRef.current)
+          homeRef.current.viewpoint = new Viewpoint({
+            targetGeometry: fullExtent.current,
+          });
+        return view.goTo(fullExtent.current, { animate: false });
+      })
+      .catch(() => {});
     const click = view.on("click", async (event) => {
-      const hit = await view.hitTest(event, { include: [soumLayer] });
-      const g = hit.results.find((r) => r.type === "graphic");
-      onSelectRef.current(
-        g && g.type === "graphic" ? (g.graphic.attributes.fid as number) : null,
-      );
+      const entries = [...overlayLayers.current.values()];
+      const hit = await view.hitTest(event, {
+        include: [soumLayer, ...entries.map((e) => e.layer)],
+      });
+      // Results come topmost first: an element feature wins over the soum.
+      for (const r of hit.results) {
+        if (r.type !== "graphic") continue;
+        const entry = entries.find((e) => e.layer === r.graphic.layer);
+        if (entry) {
+          onPickRef.current({
+            mode: entry.mode,
+            overlay: entry.overlay,
+            fid: r.graphic.attributes.fid as number,
+            attrs: { ...r.graphic.attributes },
+          });
+          return;
+        }
+        if (r.graphic.layer === soumLayer) {
+          onSelectRef.current(r.graphic.attributes.fid as number);
+          return;
+        }
+      }
+      onSelectRef.current(null);
     });
     return () => {
       alive = false;
@@ -150,18 +177,15 @@ export default function RiskMap({
     soumLayer.set("renderer", soumRenderer(field, showNoExp));
   }, [soumLayer, field, showNoExp]);
 
-  // Dim soums that do not match the filters.
+  // Hide soums that do not match the filters.
   useEffect(() => {
     if (!layerView) return;
     layerView.set(
-      "featureEffect",
+      "filter",
       matchedIds
-        ? new FeatureEffect({
-            filter: new FeatureFilter(
-              matchedIds.length ? { objectIds: matchedIds } : { where: "1=0" },
-            ),
-            excludedEffect: "grayscale(100%) opacity(18%)",
-          })
+        ? new FeatureFilter(
+            matchedIds.length ? { objectIds: matchedIds } : { where: "1=0" },
+          )
         : null,
     );
   }, [layerView, matchedIds]);
@@ -172,90 +196,171 @@ export default function RiskMap({
     return () => h.remove();
   }, [layerView, selectedFid]);
 
+  // Highlight the picked element feature.
+  useEffect(() => {
+    if (!view || !picked) return;
+    const entry = overlayLayers.current.get(
+      `${picked.mode}:${picked.overlay.id}`,
+    );
+    if (!entry) return;
+    let handle: { remove(): void } | null = null;
+    let alive = true;
+    view
+      .whenLayerView(entry.layer)
+      .then((lv) => {
+        if (alive) handle = lv.highlight(picked.fid);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      handle?.remove();
+    };
+  }, [view, picked]);
+
   useEffect(() => {
     if (!view || focus.key === 0) return;
     if (!focus.ids) {
-      view.goTo(HOME).catch(() => {});
+      view.goTo(fullExtent.current ?? HOME).catch(() => {});
       return;
     }
+    if (!focus.ids.length) return;
+    let alive = true;
     soumLayer
       .queryExtent({ objectIds: focus.ids })
       .then((r) => {
-        if (r.extent) return view.goTo(r.extent.expand(1.25));
+        if (alive && r.extent) return view.goTo(r.extent.expand(1.25));
       })
       .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [view, soumLayer, focus]);
 
-  // Element point / line layers.
+  // Element layers: polygons sit just above the soums, lines and points on top.
   useEffect(() => {
     if (!view?.map) return;
     const map = view.map;
-    const wanted = new Set(overlays.map((el) => `${mode}:${el}`));
-    for (const [key, layer] of overlayLayers.current) {
+    let alive = true;
+    const wanted = new Set(overlays.map((id) => `${mode}:${id}`));
+    for (const [key, entry] of overlayLayers.current) {
       if (!wanted.has(key)) {
-        map.remove(layer);
+        map.remove(entry.layer);
         overlayLayers.current.delete(key);
       }
     }
     for (const o of OVERLAYS[mode]) {
-      const key = `${mode}:${o.el}`;
+      const key = `${mode}:${o.id}`;
       if (!wanted.has(key)) continue;
-      let layer = overlayLayers.current.get(key);
-      if (!layer) {
-        layer = new FeatureLayer({
+      let entry = overlayLayers.current.get(key);
+      if (!entry) {
+        const layer = new FeatureLayer({
           url: `${OVERLAY_SERVICE[mode]}/${o.layerId}`,
+          title: overlayLabel(o),
           outFields: ["*"],
+          popupEnabled: false,
+          opacity: 1,
           renderer: overlayRenderer(o, null),
         });
-        overlayLayers.current.set(key, layer);
-        map.add(layer);
+        entry = { layer, overlay: o, mode };
+        overlayLayers.current.set(key, entry);
+        if (o.geometry === "polygon") map.add(layer, 1);
+        else map.add(layer);
       }
-      const target = layer;
+      const target = entry.layer;
       target
         .load()
         .then(() => {
-          const has = (n: string) => target.fields.some((f) => f.name === n);
+          if (!alive || overlayLayers.current.get(key)?.layer !== target)
+            return;
           const f = `${hazard}_${o.el}_el`;
-          target.renderer = overlayRenderer(o, has(f) ? f : null);
-          target.popupTemplate = new PopupTemplate({
-            title: `${ELEMENTS[o.el]}${has(o.nameField) ? `: {${o.nameField}}` : ""}`,
-            content: [
-              {
-                type: "fields",
-                fieldInfos: HAZARDS.filter((h) =>
-                  has(`${h.id}_${o.el}_el`),
-                ).map((h) => ({
-                  fieldName: `${h.id}_${o.el}_el`,
-                  label: h.label,
-                })),
-              },
-            ],
-          });
+          const has = target.fields.some((x) => x.name === f);
+          target.renderer = overlayRenderer(o, has ? f : null);
         })
         .catch(() => {});
     }
+    // Keep markers readable even when a polygon or line is enabled later.
+    const order = { polygon: 0, line: 1, point: 2 };
+    [...overlayLayers.current.values()]
+      .sort((a, b) => order[a.overlay.geometry] - order[b.overlay.geometry])
+      .forEach((entry, index) => map.reorder(entry.layer, index + 1));
+    return () => {
+      alive = false;
+    };
   }, [view, mode, hazard, overlays]);
+
+  // Element features follow the soum filter (server-side definition query).
+  useEffect(() => {
+    for (const { layer, overlay } of overlayLayers.current.values())
+      layer.definitionExpression = overlayWhere(overlay, matchedCodes);
+  }, [view, matchedCodes, mode, overlays]);
 
   return (
     <arcgis-map
       ref={mapRef}
       className={styles.map}
-      basemap="gray-vector"
+      basemap="satellite"
       center={HOME.center.join(",")}
       zoom={HOME.zoom}
       onarcgisViewReadyChange={() => setView(mapRef.current?.view ?? null)}
     >
       <arcgis-zoom slot="top-left" />
-      <arcgis-home slot="top-left" />
-      <arcgis-basemap-toggle slot="bottom-left" next-basemap="hybrid" />
+      <arcgis-home ref={homeRef} slot="top-left" />
+      <arcgis-basemap-toggle slot="bottom-left" next-basemap="gray-vector" />
+      <button
+        type="button"
+        slot="top-left"
+        className={styles.mapButton}
+        title="Зурагт төвлөрүүлэх"
+        aria-label="Зурагт төвлөрүүлэх"
+        onClick={onFocusMatched}
+      >
+        <Icon name="focus" size={16} />
+      </button>
       <arcgis-expand
-        slot="top-right"
+        slot="top-left"
         expand-tooltip="Суурь зураг"
         collapse-tooltip="Хаах"
       >
         <arcgis-basemap-gallery />
       </arcgis-expand>
       <div slot="bottom-right" className={styles.legend}>
+        {overlays.length > 0 && (
+          <details className={styles.objectLegend} open>
+            <summary>
+              Объектын тэмдэглэгээ <span>{overlays.length}</span>
+            </summary>
+            <div className={styles.objectLegendList}>
+              {OVERLAYS[mode]
+                .filter((o) => overlays.includes(o.id))
+                .map((o) => (
+                  <div key={o.id} className={styles.objectLegendItem}>
+                    {/* The preview is generated from the same symbols as the map. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={overlayLegendSvg(o)}
+                      alt=""
+                      width={26}
+                      height={26}
+                    />
+                    <span>{overlayLabel(o)}</span>
+                  </div>
+                ))}
+            </div>
+            <p className={styles.legendNote}>
+              {hazard === "all"
+                ? "Дүрс, өнгө, хээгээр объектын төрлийг ялгана."
+                : "Дүрс, хээ нь төрлийг; ангилалтай объектын өнгө нь үнэлгээг илэрхийлнэ."}
+            </p>
+            {OVERLAYS[mode].some(
+              (o) => overlays.includes(o.id) && o.geometry === "polygon",
+            ) && (
+              <p className={styles.legendNote}>
+                Талбайн давхарга: сумын түвшний үзүүлэлт.
+              </p>
+            )}
+          </details>
+        )}
+        <strong>Үнэлгээний ангилал</strong>
         {CLASSES.map((c) => (
           <span key={c} className={styles.legendItem}>
             <i style={{ background: CLASS_COLORS[c] }} />

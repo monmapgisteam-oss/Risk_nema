@@ -9,7 +9,7 @@ const Dashboard = dynamic(() => import("./Dashboard"), {
   ssr: false,
   loading: () => (
     <div className={styles.loading} role="status">
-      Карт ачаалж байна…
+      <span className={styles.spinner} /><strong>Эрсдэлийн зураглал</strong><span>Газрын зураг, үнэлгээний мэдээллийг бэлтгэж байна…</span>
     </div>
   ),
 });

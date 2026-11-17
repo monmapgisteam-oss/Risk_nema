@@ -1,23 +1,48 @@
 "use client";
 
 import {
-  CLASS_COLORS,
-  CLASS_LABELS,
-  ELEMENTS,
   HAZARDS,
   MODES,
-  NOEXP_COLOR,
   OVERLAYS,
+  overlayLabel,
   type Filters,
 } from "@/lib/riskConfig";
 import styles from "./Dashboard.module.css";
+import Icon, { type IconName } from "./Icon";
+import ClassChips from "./ClassChips";
+
+const OVERLAY_ICONS: Record<string, IconName> = {
+  edu: "school",
+  hlth: "hospital",
+  trf: "lt",
+  brdg: "bridge",
+  culv: "pipe",
+  road: "road",
+  rail: "train",
+  com: "building",
+  hh: "home",
+  pop: "users",
+  hsar: "building",
+  hsdw: "home",
+  farm: "wheat",
+  past: "grass",
+  crop: "wheat",
+  crhh: "home",
+  cren: "building",
+  ls: "livestock",
+  ent: "building",
+  gas: "fuel",
+  term: "warehouse",
+  cmf: "tower",
+  cult: "landmark",
+  mine: "pickaxe",
+  mnts: "wrench",
+  brdp: "gate",
+};
 
 type Props = {
   filters: Filters;
   update: (patch: Partial<Filters>) => void;
-  reset: () => void;
-  elements: string[];
-  aimags: [string, string][];
   overlays: string[];
   setOverlays: (els: string[]) => void;
 };
@@ -25,183 +50,142 @@ type Props = {
 const toggle = <T,>(list: T[], v: T) =>
   list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 
-function ClassChips({
-  value,
-  onChange,
-  withZero,
-}: {
-  value: number[];
-  onChange: (v: number[]) => void;
-  withZero?: boolean;
-}) {
-  const classes = withZero ? [0, 1, 2, 3, 4, 5] : [1, 2, 3, 4, 5];
-  return (
-    <div className={styles.chips}>
-      {classes.map((c) => (
-        <button
-          key={c}
-          type="button"
-          className={styles.classChip}
-          aria-pressed={value.includes(c)}
-          onClick={() => onChange(toggle(value, c))}
-        >
-          <i style={{ background: c ? CLASS_COLORS[c] : NOEXP_COLOR }} />
-          {CLASS_LABELS[c]}
-        </button>
-      ))}
-    </div>
-  );
-}
+/** Advanced filters (other indicator, top hazard, high-class count); hidden for now. */
+const SHOW_ADVANCED = false;
 
 export default function FilterPanel({
   filters,
   update,
-  reset,
-  elements,
-  aimags,
   overlays,
   setOverlays,
 }: Props) {
   const other = MODES.find((m) => m.id !== filters.mode)!;
   return (
-    <aside className={styles.panel} aria-label="Шүүлтүүр">
-      <div className={styles.segmented} role="group" aria-label="Үзүүлэлт">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            aria-pressed={filters.mode === m.id}
-            onClick={() => update({ mode: m.id })}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
-      <div className={styles.group}>
-        <span className={styles.label}>Аюул</span>
-        <div className={styles.chips}>
-          {HAZARDS.map((h) => (
+    <aside
+      className={`${styles.panel} ${styles.filterPanel}`}
+      aria-label="Шүүлтүүр"
+    >
+      <div className={styles.filterBody}>
+        <div className={styles.segmented} role="group" aria-label="Үзүүлэлт">
+          {MODES.map((m) => (
             <button
-              key={h.id}
+              key={m.id}
               type="button"
-              className={styles.chip}
-              aria-pressed={filters.hazard === h.id}
-              onClick={() => update({ hazard: h.id })}
+              aria-pressed={filters.mode === m.id}
+              onClick={() => update({ mode: m.id })}
             >
-              {h.label}
+              {m.label}
             </button>
           ))}
         </div>
-      </div>
 
-      <label className={styles.group}>
-        <span className={styles.label}>Элемент</span>
-        <select
-          value={filters.element}
-          disabled={!elements.length}
-          onChange={(e) => update({ element: e.target.value })}
-        >
-          <option value="">Бүгд (дундаж)</option>
-          {elements.map((el) => (
-            <option key={el} value={el}>
-              {ELEMENTS[el]}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className={styles.group}>
-        <span className={styles.label}>Ангилал</span>
-        <ClassChips
-          value={filters.classes}
-          withZero={!!filters.element}
-          onChange={(classes) => update({ classes })}
-        />
-      </div>
-
-      <div className={styles.group}>
-        <span className={styles.label}>{other.label}</span>
-        <ClassChips
-          value={filters.otherClasses}
-          onChange={(otherClasses) => update({ otherClasses })}
-        />
-      </div>
-
-      <div className={styles.row}>
-        <label className={styles.group}>
-          <span className={styles.label}>Аймаг</span>
-          <select
-            value={filters.aimag}
-            onChange={(e) => update({ aimag: e.target.value })}
-          >
-            <option value="">Бүгд</option>
-            {aimags.map(([code, name]) => (
-              <option key={code} value={code}>
-                {name}
-              </option>
+        <div className={styles.group}>
+          <span className={styles.sectionLabel}>
+            Аюулт үзэгдэл <span>10 төрөл</span>
+          </span>
+          <div className={styles.hazardGrid}>
+            {HAZARDS.map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                className={styles.hazardChip}
+                aria-pressed={filters.hazard === h.id}
+                onClick={() => update({ hazard: h.id })}
+              >
+                <Icon name={h.id} size={16} />
+                {h.id === "all" ? "Бүх аюулт үзэгдэл" : h.label}
+                {filters.hazard === h.id && (
+                  <span className={styles.selectedDot} />
+                )}
+              </button>
             ))}
-          </select>
-        </label>
-        <label className={styles.group}>
-          <span className={styles.label}>Тэргүүлэх аюул</span>
-          <select
-            value={filters.topHaz}
-            onChange={(e) => update({ topHaz: e.target.value })}
+          </div>
+        </div>
+
+        {SHOW_ADVANCED && (
+          <details className={styles.advanced}>
+            <summary>
+              Нарийвчилсан шүүлтүүр <Icon name="chevron" size={14} />
+            </summary>
+            <div className={styles.advancedBody}>
+              <div className={styles.group}>
+                <span className={styles.label}>{other.label}</span>
+                <ClassChips
+                  label={other.label}
+                  value={filters.otherClasses}
+                  onChange={(otherClasses) => update({ otherClasses })}
+                />
+              </div>
+
+              <div className={styles.group}>
+                <label className={styles.group}>
+                  <span className={styles.label}>Тэргүүлэх аюул</span>
+                  <select
+                    value={filters.topHaz}
+                    onChange={(e) => update({ topHaz: e.target.value })}
+                  >
+                    <option value="">Бүгд</option>
+                    {HAZARDS.filter((h) => h.id !== "all").map((h) => (
+                      <option key={h.id} value={h.id.toUpperCase()}>
+                        {h.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className={styles.group}>
+                <span className={styles.label}>
+                  Өндөр ангилалтай аюул ≥ {filters.minHigh}
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  value={filters.minHigh}
+                  onChange={(e) => update({ minHigh: Number(e.target.value) })}
+                />
+                <span className={styles.rangeLabels}>
+                  <span>0 · Бүгд</span>
+                  <span>10</span>
+                </span>
+              </label>
+            </div>
+          </details>
+        )}
+
+        <div className={styles.group}>
+          <span className={styles.sectionLabel}>
+            Объектын давхарга
+            <span>
+              {overlays.length
+                ? `${overlays.length} / ${OVERLAYS[filters.mode].length}`
+                : `${OVERLAYS[filters.mode].length} төрөл`}
+            </span>
+          </span>
+          <div
+            className={styles.overlayGrid}
+            role="group"
+            aria-label="Объектын давхарга"
           >
-            <option value="">Бүгд</option>
-            {HAZARDS.filter((h) => h.id !== "all").map((h) => (
-              <option key={h.id} value={h.id.toUpperCase()}>
-                {h.label}
-              </option>
+            {OVERLAYS[filters.mode].map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                className={styles.hazardChip}
+                aria-pressed={overlays.includes(o.id)}
+                onClick={() => setOverlays(toggle(overlays, o.id))}
+              >
+                <Icon name={OVERLAY_ICONS[o.el] ?? "layers"} size={16} />
+                <span className={styles.optionLabel}>{overlayLabel(o)}</span>
+                {overlays.includes(o.id) && (
+                  <span className={styles.selectedDot} />
+                )}
+              </button>
             ))}
-          </select>
-        </label>
-      </div>
-
-      <label className={styles.group}>
-        <span className={styles.label}>Сум</span>
-        <input
-          type="search"
-          placeholder="Хайх"
-          value={filters.q}
-          onChange={(e) => update({ q: e.target.value })}
-        />
-      </label>
-
-      <label className={styles.group}>
-        <span className={styles.label}>
-          Өндөр ангилалтай аюул ≥ {filters.minHigh}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={10}
-          value={filters.minHigh}
-          onChange={(e) => update({ minHigh: Number(e.target.value) })}
-        />
-      </label>
-
-      <div className={styles.group}>
-        <span className={styles.label}>Объект</span>
-        <div className={styles.chips}>
-          {OVERLAYS[filters.mode].map((o) => (
-            <button
-              key={o.el}
-              type="button"
-              className={styles.chip}
-              aria-pressed={overlays.includes(o.el)}
-              onClick={() => setOverlays(toggle(overlays, o.el))}
-            >
-              {ELEMENTS[o.el]}
-            </button>
-          ))}
+          </div>
         </div>
       </div>
-
-      <button type="button" className={styles.reset} onClick={reset}>
-        Цэвэрлэх
-      </button>
     </aside>
   );
 }

@@ -82,38 +82,134 @@ export const CLASS_LABELS: Record<number, string> = {
 };
 
 export type Overlay = {
+  /** Unique within a mode; equals `el` except for the section layers. */
+  id: string;
   el: string;
   layerId: number;
-  geometry: "point" | "line";
+  geometry: "point" | "line" | "polygon";
   nameField: string;
+  /** Field holding the soum code the feature was joined to ("" = none). */
+  soumField: string;
+  label?: string;
 };
 
-/** Point / line element layers of the Vul_risk and exp_risk services. */
+const ov = (
+  el: string,
+  layerId: number,
+  geometry: Overlay["geometry"],
+  nameField: string,
+  soumField: string,
+): Overlay => ({ id: el, el, layerId, geometry, nameField, soumField });
+const poly = (el: string, layerId: number) =>
+  ov(el, layerId, "polygon", "soumname", "soumid");
+
+/** Every element layer of the Vul_risk and exp_risk services. */
 export const OVERLAYS: Record<Mode, Overlay[]> = {
   v: [
-    { el: "edu", layerId: 1, geometry: "point", nameField: "name_mon" },
-    { el: "trf", layerId: 0, geometry: "point", nameField: "station_na" },
-    { el: "brdg", layerId: 3, geometry: "point", nameField: "bridgename" },
-    { el: "culv", layerId: 2, geometry: "point", nameField: "cul_type" },
-    { el: "road", layerId: 4, geometry: "line", nameField: "roadname" },
+    ov("edu", 1, "point", "name_mon", "soum_code"),
+    ov("trf", 0, "point", "station_na", "soum_cod_1"),
+    ov("brdg", 3, "point", "bridgename", "soum_cod_2"),
+    ov("culv", 2, "point", "cul_type", "soum_cod_1"),
+    ov("road", 4, "line", "roadname", "soum_cod_1"),
+    {
+      ...ov("road", 5, "line", "rdsec_name", ""),
+      id: "road_sec",
+      label: "Улсын зам (хэсэг)",
+    },
+    poly("com", 11),
+    poly("hh", 8),
+    poly("pop", 6),
+    poly("farm", 9),
+    poly("past", 7),
+    poly("ent", 10),
   ],
   e: [
-    { el: "edu", layerId: 6, geometry: "point", nameField: "name_mon" },
-    { el: "hlth", layerId: 4, geometry: "point", nameField: "name" },
-    { el: "trf", layerId: 0, geometry: "point", nameField: "station_na" },
-    { el: "gas", layerId: 5, geometry: "point", nameField: "name_of_st" },
-    { el: "term", layerId: 1, geometry: "point", nameField: "name_mon" },
-    { el: "cmf", layerId: 9, geometry: "point", nameField: "type" },
-    { el: "cult", layerId: 8, geometry: "point", nameField: "name" },
-    { el: "mine", layerId: 3, geometry: "point", nameField: "areaname" },
-    { el: "brdg", layerId: 11, geometry: "point", nameField: "bridgename" },
-    { el: "culv", layerId: 7, geometry: "point", nameField: "cul_type" },
-    { el: "mnts", layerId: 2, geometry: "point", nameField: "azza_name" },
-    { el: "brdp", layerId: 10, geometry: "point", nameField: "name" },
-    { el: "road", layerId: 12, geometry: "line", nameField: "roadname" },
-    { el: "rail", layerId: 14, geometry: "line", nameField: "name" },
+    ov("edu", 6, "point", "name_mon", "soum_code"),
+    ov("hlth", 4, "point", "name", "soum_cod_1"),
+    ov("trf", 0, "point", "station_na", "soum_code"),
+    ov("gas", 5, "point", "name_of_st", "soum_code"),
+    ov("term", 1, "point", "name_mon", "soum_code"),
+    ov("cmf", 9, "point", "type", "soum_cod_1"),
+    ov("cult", 8, "point", "name", "soum_code"),
+    ov("mine", 3, "point", "areaname", "soum_code"),
+    ov("brdg", 11, "point", "bridgename", "soum_cod_1"),
+    ov("culv", 7, "point", "cul_type", "soum_cod_1"),
+    ov("mnts", 2, "point", "azza_name", "soum_code"),
+    ov("brdp", 10, "point", "name", "soum_code"),
+    ov("road", 12, "line", "roadname", "soum_cod_2"),
+    {
+      ...ov("road", 13, "line", "rdsec_name", ""),
+      id: "road_sec",
+      label: "Улсын зам (хэсэг)",
+    },
+    ov("rail", 14, "line", "name", "soum_cod_1"),
+    {
+      ...ov("rail", 15, "line", "rwsection", ""),
+      id: "rail_sec",
+      label: "Төмөр зам (хэсэг)",
+    },
+    poly("com", 27),
+    poly("hh", 21),
+    poly("pop", 16),
+    poly("hsar", 20),
+    poly("hsdw", 19),
+    poly("farm", 22),
+    poly("past", 17),
+    poly("crop", 24),
+    poly("crhh", 25),
+    poly("cren", 26),
+    poly("ls", 18),
+    poly("ent", 23),
   ],
 };
+
+export const overlayLabel = (o: Overlay) => o.label ?? ELEMENTS[o.el];
+
+/** A feature of an element layer picked on the map. */
+export type Picked = {
+  mode: Mode;
+  overlay: Overlay;
+  fid: number;
+  attrs: Record<string, unknown>;
+};
+
+const CLASS_BY_NAME: Record<string, number> = {
+  "very low": 1,
+  low: 2,
+  moderate: 3,
+  high: 4,
+  "very high": 5,
+};
+
+/** "4. High" / "High" / 4 → 4; anything else → null. */
+export function parseClass(v: unknown): number | null {
+  if (typeof v === "number") return v;
+  if (typeof v !== "string") return null;
+  const m = /^\s*([0-5])\s*\./.exec(v);
+  if (m) return Number(m[1]);
+  return CLASS_BY_NAME[v.trim().toLowerCase()] ?? null;
+}
+
+/** Soum codes that differ between the source layers and the boundary layer. */
+const SOUM_CODE_FIX: Record<number, number> = { 8337: 8340 };
+
+/** SQL filter keeping only the features of an element layer in the given soums. */
+export function overlayWhere(o: Overlay, codes: number[] | null): string {
+  if (!codes || !o.soumField) return "";
+  if (!codes.length) return "1=0";
+  const all = [...codes];
+  for (const [from, to] of Object.entries(SOUM_CODE_FIX))
+    if (codes.includes(to)) all.push(Number(from));
+  return `${o.soumField} IN (${all.join(",")})`;
+}
+
+export function soumOfPicked(rows: SoumRow[], p: Picked): SoumRow | null {
+  if (!p.overlay.soumField) return null;
+  const raw = Number(p.attrs[p.overlay.soumField]);
+  if (!raw) return null;
+  const code = SOUM_CODE_FIX[raw] ?? raw;
+  return rows.find((r) => Number(r.code) === code) ?? null;
+}
 
 export type SoumRow = Record<string, string | number | null> & { fid: number };
 
@@ -124,6 +220,7 @@ export type Filters = {
   classes: number[]; // empty = all
   otherClasses: number[]; // class of the other indicator, empty = all
   aimag: string; // aimag_code, "" = all
+  soums: number[]; // selected soum fids, empty = all
   q: string;
   topHaz: string; // "" = all
   minHigh: number;
@@ -136,6 +233,7 @@ export const DEFAULT_FILTERS: Filters = {
   classes: [],
   otherClasses: [],
   aimag: "",
+  soums: [],
   q: "",
   topHaz: "",
   minHigh: 0,
@@ -170,6 +268,7 @@ export function applyFilters(rows: SoumRow[], f: Filters): SoumRow[] {
     if (f.otherClasses.length && !f.otherClasses.includes(r[other] as number))
       return false;
     if (f.aimag && r.aimag_code !== f.aimag) return false;
+    if (f.soums.length && !f.soums.includes(r.fid)) return false;
     if (f.topHaz && r[`top_${f.mode}_haz`] !== f.topHaz) return false;
     if (f.minHigh && ((r[`n_${f.mode}_high`] as number) ?? 0) < f.minHigh)
       return false;

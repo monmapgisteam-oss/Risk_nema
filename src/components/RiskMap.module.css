@@ -2,30 +2,124 @@
   position: absolute;
   inset: 0;
   display: block;
+  --calcite-color-brand: #315b7d;
+  --calcite-color-brand-hover: #244862;
+  --calcite-color-brand-press: #142b42;
+  --calcite-font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+  --calcite-corner-radius: 6px;
 }
-
 .legend {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 1px 4px rgba(15, 42, 68, 0.25);
-  font-size: 12px;
-  color: #1a1f24;
+  gap: 8px;
+  padding: 13px 15px;
+  border: 1px solid #dce3e9;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 3px 14px #142b4210;
+  font-size: 10px;
+  color: #596b7d;
+  backdrop-filter: blur(12px);
+  max-width: 225px;
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
 }
-
+.objectLegend {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e8edf2;
+}
+.objectLegend summary {
+  cursor: pointer;
+  color: #31485f;
+  font-weight: 600;
+}
+.objectLegend summary > span {
+  margin-left: 6px;
+  color: #8391a0;
+  font-weight: 400;
+}
+.objectLegendList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding-top: 9px;
+}
+.objectLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.objectLegendItem img {
+  flex-shrink: 0;
+}
+.legendNote {
+  margin-top: 8px;
+  max-width: 190px;
+  font-size: 9px;
+  line-height: 1.5;
+  color: #758596;
+}
+.legend > strong {
+  font-size: 10px;
+  font-weight: 600;
+  color: #31485f;
+  padding-bottom: 6px;
+  margin-bottom: 1px;
+  border-bottom: 1px solid #e8edf2;
+}
 .legendItem {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   white-space: nowrap;
 }
-
 .legendItem i {
-  width: 14px;
-  height: 14px;
+  width: 9px;
+  height: 9px;
   border-radius: 3px;
-  border: 1px solid rgba(15, 42, 68, 0.2);
+  box-shadow: inset 0 0 0 1px #00000010;
+}
+@media (max-width: 540px) {
+  .legend {
+    padding: 9px 10px;
+    gap: 5px;
+    font-size: 9px;
+    max-width: 175px;
+    max-height: 45vh;
+  }
+  .legend > strong {
+    font-size: 9px;
+  }
+}
+
+.mapButton {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: #fff;
+  color: #323232;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+.mapButton:hover {
+  background: #f3f3f3;
+}
+/* The gallery has no background of its own inside arcgis-expand. */
+.map arcgis-basemap-gallery {
+  display: block;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+/* Space between the stacked map buttons. */
+.map > [slot="top-left"] {
+  margin-bottom: 8px;
+}
+/* Square zoom buttons so the divider between + and − stays straight. */
+.map arcgis-zoom {
+  --calcite-corner-radius: 0;
 }

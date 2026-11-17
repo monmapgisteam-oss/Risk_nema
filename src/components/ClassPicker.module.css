@@ -1,0 +1,109 @@
+.picker {
+  position: relative;
+  min-width: 0;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #ffffff2e;
+  border-radius: 6px;
+  background: #ffffff12;
+  color: #fff;
+  font-size: 11px;
+  text-align: left;
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  border-color: #ffffff59;
+  background: #ffffff1a;
+}
+
+.trigger > svg {
+  transform: rotate(90deg);
+}
+
+.selection {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.selection > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px #0000000a;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  width: 100%;
+  min-width: min(190px, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--fg);
+  box-shadow: 0 10px 28px #142b4229;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.option:hover,
+.option:focus-within {
+  background: #f1f5f8;
+}
+
+.popover .option input {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  accent-color: #315b7d;
+  cursor: pointer;
+}
+
+.clear {
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px;
+  border: 0;
+  border-top: 1px solid #e5eaf0;
+  background: transparent;
+  color: #315b7d;
+  font-size: 11px;
+  text-align: left;
+}
+
+.clear:hover {
+  background: #f1f5f8;
+}
