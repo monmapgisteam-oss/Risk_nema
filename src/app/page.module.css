@@ -19,8 +19,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  height: 28px;
+  padding: 0 8px;
   border-radius: 6px;
   background: var(--accent);
   color: var(--header-bg);
@@ -55,6 +55,7 @@
 .mapSection {
   position: relative;
   min-height: 0;
+  overflow: auto;
 }
 
 @media (max-width: 600px) {
