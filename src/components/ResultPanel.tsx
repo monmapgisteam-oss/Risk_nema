@@ -191,20 +191,20 @@ export default function ResultPanel({
       aria-label="Үр дүн"
     >
       <div className={styles.resultSummary}>
-        <div className={styles.summaryCard}>
-          <span className={styles.label}>
-            {loading
-              ? "Үнэлгээний мэдээлэл ачаалж байна"
-              : error
-                ? "Мэдээлэл ачаалагдсангүй"
-                : scopeLabel}
-          </span>
-          <div className={styles.count} aria-live="polite">
+        <div className={styles.summaryCard} aria-busy={loading}>
+          <div className={styles.summaryHeading}>
+            <p className={styles.summaryTitle}>
+              {loading
+                ? "Үнэлгээний мэдээлэл ачаалж байна"
+                : error
+                  ? "Мэдээлэл ачаалагдсангүй"
+                  : scopeLabel}
+            </p>
+          </div>
+          <div className={styles.count} aria-live="polite" aria-atomic="true">
+            <Icon name={error ? "info" : "map"} size={14} />
             <strong>{loading || error ? "—" : matched.length}</strong>
             <span>/ {total || "—"} сум</span>
-            <span className={styles.summaryIcon}>
-              <Icon name="map" size={18} />
-            </span>
           </div>
         </div>
 
