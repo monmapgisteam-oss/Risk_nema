@@ -463,6 +463,7 @@ export default function Dashboard() {
               onPick={pick}
               focus={focus}
               onFocusMatched={() => focusOn(matchedIds)}
+              areaFocus={!!filters.aimag || filters.soums.length > 0}
             />
           </div>
         </div>

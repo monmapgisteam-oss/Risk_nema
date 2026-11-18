@@ -6,6 +6,7 @@ import {
   OVERLAYS,
   overlayLabel,
   type Filters,
+  type Overlay,
 } from "@/lib/riskConfig";
 import styles from "./Dashboard.module.css";
 import Icon, { type IconName } from "./Icon";
@@ -53,6 +54,12 @@ const toggle = <T,>(list: T[], v: T) =>
 /** Advanced filters (other indicator, top hazard, high-class count); hidden for now. */
 const SHOW_ADVANCED = false;
 
+const OVERLAY_GROUPS: { geometry: Overlay["geometry"]; label: string }[] = [
+  { geometry: "point", label: "Цэг" },
+  { geometry: "line", label: "Шугам" },
+  { geometry: "polygon", label: "Полигон" },
+];
+
 export default function FilterPanel({
   filters,
   update,
@@ -81,7 +88,8 @@ export default function FilterPanel({
 
         <div className={styles.group}>
           <span className={styles.sectionLabel}>
-            Аюулт үзэгдэл <span>10 төрөл</span>
+            <span className={styles.caps}>Аюулт үзэгдэл</span>
+            <span>10 төрөл</span>
           </span>
           <div className={styles.hazardGrid}>
             {HAZARDS.map((h) => (
@@ -156,34 +164,50 @@ export default function FilterPanel({
 
         <div className={styles.group}>
           <span className={styles.sectionLabel}>
-            Объектын давхарга
+            <span className={styles.caps}>Объектын давхарга</span>
             <span>
               {overlays.length
                 ? `${overlays.length} / ${OVERLAYS[filters.mode].length}`
                 : `${OVERLAYS[filters.mode].length} төрөл`}
             </span>
           </span>
-          <div
-            className={styles.overlayGrid}
-            role="group"
-            aria-label="Объектын давхарга"
-          >
-            {OVERLAYS[filters.mode].map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                className={styles.hazardChip}
-                aria-pressed={overlays.includes(o.id)}
-                onClick={() => setOverlays(toggle(overlays, o.id))}
-              >
-                <Icon name={OVERLAY_ICONS[o.el] ?? "layers"} size={16} />
-                <span className={styles.optionLabel}>{overlayLabel(o)}</span>
-                {overlays.includes(o.id) && (
-                  <span className={styles.selectedDot} />
-                )}
-              </button>
-            ))}
-          </div>
+          {OVERLAY_GROUPS.map(({ geometry, label }) => {
+            const items = OVERLAYS[filters.mode].filter(
+              (o) => o.geometry === geometry,
+            );
+            if (!items.length) return null;
+            return (
+              <div key={geometry} className={styles.overlayGroup}>
+                <span className={styles.overlayGroupLabel}>
+                  {label}
+                  <span>{items.length}</span>
+                </span>
+                <div
+                  className={styles.overlayGrid}
+                  role="group"
+                  aria-label={label}
+                >
+                  {items.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className={styles.hazardChip}
+                      aria-pressed={overlays.includes(o.id)}
+                      onClick={() => setOverlays(toggle(overlays, o.id))}
+                    >
+                      <Icon name={OVERLAY_ICONS[o.el] ?? "layers"} size={16} />
+                      <span className={styles.optionLabel}>
+                        {overlayLabel(o)}
+                      </span>
+                      {overlays.includes(o.id) && (
+                        <span className={styles.selectedDot} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </aside>

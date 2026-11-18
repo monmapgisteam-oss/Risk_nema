@@ -191,24 +191,6 @@ export default function ResultPanel({
       aria-label="Үр дүн"
     >
       <div className={styles.resultSummary}>
-        {picked && (
-          <ObjectDetail
-            picked={picked}
-            soum={pickedSoum}
-            vul={pickedVul}
-            onClose={onClosePicked}
-          />
-        )}
-        {!picked && selected && (
-          <Detail
-            row={selected}
-            filters={filters}
-            elements={elements}
-            update={update}
-            onClose={() => onSelect(null)}
-          />
-        )}
-
         <div className={styles.summaryCard}>
           <span className={styles.label}>
             {loading
@@ -223,14 +205,6 @@ export default function ResultPanel({
             <span className={styles.summaryIcon}>
               <Icon name="map" size={18} />
             </span>
-          </div>
-          <div className={styles.distribution} aria-hidden="true">
-            {classes.map((c) => (
-              <span
-                key={c}
-                style={{ flex: counts[c], background: colorOf(c) }}
-              />
-            ))}
           </div>
         </div>
 
@@ -269,9 +243,27 @@ export default function ResultPanel({
             </button>
           ))}
         </details>
+
+        {picked && (
+          <ObjectDetail
+            picked={picked}
+            soum={pickedSoum}
+            vul={pickedVul}
+            onClose={onClosePicked}
+          />
+        )}
+        {!picked && selected && (
+          <Detail
+            row={selected}
+            filters={filters}
+            elements={elements}
+            update={update}
+            onClose={() => onSelect(null)}
+          />
+        )}
       </div>
       <div className={styles.listHeading}>
-        <h3>Сумдын эрэмбэ</h3>
+        <h3 className={styles.caps}>Сумдын эрэмбэ</h3>
         <span>{sorted.length} илэрц</span>
       </div>
       <div className={styles.sort} role="group" aria-label="Эрэмбэ">

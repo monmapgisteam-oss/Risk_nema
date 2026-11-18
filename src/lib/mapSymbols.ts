@@ -5,7 +5,6 @@ import SizeVariable from "@arcgis/core/renderers/visualVariables/SizeVariable";
 import CIMSymbol from "@arcgis/core/symbols/CIMSymbol";
 import PictureMarkerSymbol from "@arcgis/core/symbols/PictureMarkerSymbol";
 import SimpleFillSymbol from "@arcgis/core/symbols/SimpleFillSymbol";
-import type { FillStyle } from "@arcgis/core/symbols/types";
 import { ICON_PATHS, type IconName } from "./iconPaths";
 import {
   CLASS_COLORS,
@@ -16,7 +15,7 @@ import {
   type Overlay,
 } from "./riskConfig";
 
-type Appearance = { icon: IconName; color: string; fill?: FillStyle };
+type Appearance = { icon: IconName; color: string };
 
 // Geometry and glyph identify the object type; the ring/fill color carries
 // the risk class when a classification field exists for the chosen hazard.
@@ -35,25 +34,21 @@ const APPEARANCES: Record<string, Appearance> = {
   brdp: { icon: "gate", color: "#526e9f" },
   road: { icon: "road", color: "#597c9b" },
   rail: { icon: "train", color: "#7f638b" },
-  com: { icon: "building", color: "#7f6da5", fill: "solid" },
-  hh: { icon: "home", color: "#b1765c", fill: "forward-diagonal" },
-  pop: { icon: "users", color: "#55899f", fill: "backward-diagonal" },
-  hsar: { icon: "building", color: "#9a698d", fill: "horizontal" },
-  hsdw: { icon: "home", color: "#94794c", fill: "vertical" },
-  farm: { icon: "wheat", color: "#a48b3d", fill: "vertical" },
-  past: { icon: "grass", color: "#5e8b73", fill: "horizontal" },
-  crop: { icon: "wheat", color: "#b08d4d", fill: "vertical" },
-  crhh: { icon: "home", color: "#9f795c", fill: "cross" },
-  cren: { icon: "building", color: "#8a8760", fill: "diagonal-cross" },
-  ls: { icon: "livestock", color: "#697e65", fill: "cross" },
-  ent: { icon: "building", color: "#717e9e", fill: "diagonal-cross" },
+  com: { icon: "building", color: "#7f6da5" },
+  hh: { icon: "home", color: "#b1765c" },
+  pop: { icon: "users", color: "#55899f" },
+  hsar: { icon: "building", color: "#9a698d" },
+  hsdw: { icon: "home", color: "#94794c" },
+  farm: { icon: "wheat", color: "#a48b3d" },
+  past: { icon: "grass", color: "#5e8b73" },
+  crop: { icon: "wheat", color: "#b08d4d" },
+  crhh: { icon: "home", color: "#9f795c" },
+  cren: { icon: "building", color: "#8a8760" },
+  ls: { icon: "livestock", color: "#697e65" },
+  ent: { icon: "building", color: "#717e9e" },
 };
 
-const FALLBACK: Appearance = {
-  icon: "layers",
-  color: "#59758d",
-  fill: "solid",
-};
+const FALLBACK: Appearance = { icon: "layers", color: "#59758d" };
 const appearance = (o: Overlay) => APPEARANCES[o.el] ?? FALLBACK;
 
 export const overlayBaseColor = (o: Overlay): string => appearance(o).color;
@@ -141,15 +136,19 @@ export function overlaySymbol(o: Overlay, color: string) {
     });
   }
 
-  const style = appearance(o).fill ?? "solid";
+  // Every polygon layer uses a plain translucent fill (no hatch patterns).
   return new SimpleFillSymbol({
-    style,
-    color: withAlpha(color, style === "solid" ? 0.2 : 0.48),
+    color: withAlpha(color, 0.2),
     outline: { color: withAlpha(color, 0.88), width: 0.9 },
   });
 }
 
-export function overlayRenderer(o: Overlay, field: string | null) {
+export function overlayRenderer(
+  o: Overlay,
+  field: string | null,
+  /** Pixels taken off point markers (vulnerability points draw 1px smaller). */
+  shrink = 0,
+) {
   // Small marks at national scale, readable icons when zoomed into a soum.
   const visualVariables =
     o.geometry === "point"
@@ -157,10 +156,10 @@ export function overlayRenderer(o: Overlay, field: string | null) {
           new SizeVariable({
             valueExpression: "$view.scale",
             stops: [
-              { value: 100_000, size: "24px" },
-              { value: 750_000, size: "20px" },
-              { value: 3_000_000, size: "14px" },
-              { value: 12_000_000, size: "9px" },
+              { value: 100_000, size: 24 - shrink },
+              { value: 750_000, size: 20 - shrink },
+              { value: 3_000_000, size: 14 - shrink },
+              { value: 12_000_000, size: 9 - shrink },
             ],
             legendOptions: { showLegend: false },
           }),
@@ -201,14 +200,6 @@ export function overlayRenderer(o: Overlay, field: string | null) {
   });
 }
 
-const HATCH_PATHS: Partial<Record<FillStyle, string>> = {
-  "forward-diagonal": "M-2 2 2-2M0 8 8 0M6 10 10 6",
-  "backward-diagonal": "M-2 6 2 10M0 0 8 8M6-2 10 2",
-  horizontal: "M0 4h8",
-  vertical: "M4 0v8",
-  cross: "M0 4h8M4 0v8",
-  "diagonal-cross": "M0 0 8 8M0 8 8 0",
-};
 
 /** Compact SVG preview of the same type symbol used by the map renderer. */
 export function overlayLegendSvg(o: Overlay): string {
@@ -225,12 +216,191 @@ export function overlayLegendSvg(o: Overlay): string {
         `<path d="M3 22 12 12 20 18 29 8" fill="none" stroke="${color}" stroke-width="${(width * 4) / 3}" stroke-linecap="round" stroke-linejoin="round"${dash ? ` stroke-dasharray="${svgDash}"` : ""}/>`,
     );
   }
-  const style = appearance(o).fill ?? "solid";
-  const path = HATCH_PATHS[style];
-  const pattern = path
-    ? `<defs><pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse"><path d="${path}" fill="none" stroke="${color}" stroke-opacity=".48" stroke-width="1"/></pattern></defs>`
-    : "";
   return svgUrl(
-    `${pattern}<rect x="4" y="5" width="24" height="22" rx="1" fill="${path ? "url(#hatch)" : color}"${path ? "" : ' fill-opacity=".2"'} stroke="${color}" stroke-opacity=".88" stroke-width="1.2"/>`,
+    `<rect x="4" y="5" width="24" height="22" rx="1" fill="${color}" fill-opacity=".2" stroke="${color}" stroke-opacity=".88" stroke-width="1.2"/>`,
   );
+}
+
+/**
+ * Fields that hold a feature's own class for the hazard, best first:
+ * per-object CVI (points/lines) or the element's own class (polygons:
+ * `_vl45`, `_el345`), then the soum element class, then
+ * the soum's class for the hazard (exposure layers carry only that).
+ * For "all" the multi-hazard object class comes first.
+ */
+export function objectClassFields(
+  o: Overlay,
+  hazard: string,
+  available: string[],
+): string[] {
+  const wanted =
+    hazard === "all"
+      ? [
+          "cvi_mhei",
+          "cvi",
+          "mh_expclas",
+          "mh_expcl",
+          "mh_vl45",
+          "mh_el345",
+          "all_soumcl",
+        ]
+      : [
+          `${hazard}_cvi`,
+          `cvi_${hazard}`,
+          `${hazard}_vl45`,
+          `${hazard}_el345`,
+          `${hazard}_${o.el}_el`,
+          `${hazard}_soumcl`,
+        ];
+  return wanted.filter((f) => available.includes(f));
+}
+
+/** Arcade: first non-empty candidate field as a class 0–5 ("4. High" → 4). */
+function classExpression(fields: string[]) {
+  // Fields read by name must be declared, or they are not fetched for drawing.
+  const expects = fields.map((f) => JSON.stringify(f)).join(", ");
+  return `
+Expects($feature, ${expects});
+var fields = ${JSON.stringify(fields)};
+var names = { "very low": 1, "low": 2, "moderate": 3, "high": 4, "very high": 5 };
+for (var i in fields) {
+  var v = $feature[fields[i]];
+  if (IsEmpty(v)) continue;
+  if (TypeOf(v) == "Number") return v;
+  var t = Lower(Trim(v));
+  var n = Number(Left(t, 1));
+  if (!IsNan(n)) return n;
+  if (HasKey(names, t)) return names[t];
+}
+return null;`;
+}
+
+const RING = Array.from({ length: 33 }, (_, i) => {
+  const a = (i / 32) * Math.PI * 2;
+  return [Math.cos(a) * 5, Math.sin(a) * 5];
+});
+
+/** Object icon with a class-colored ring that pulses outwards like radar. */
+function pulseSymbol(o: Overlay, color: string, size: number) {
+  const c = new Color(color);
+  // The renderer needs the CIM `type` tag here although the typings omit it;
+  // without it the symbol fails to draw.
+  const motion = {
+    type: "CIMAnimatedSymbolProperties",
+    playAnimation: true,
+    duration: 3.2,
+    repeatType: "Loop" as const,
+    easing: "EaseOut" as const,
+    // All objects pulse in step: same start, same rhythm.
+    randomizeStartTime: false,
+    startTimeOffset: 0,
+  };
+  return new CIMSymbol({
+    data: {
+      type: "CIMSymbolReference",
+      symbol: {
+        type: "CIMPointSymbol",
+        // The first layer draws on top: icon above the pulse.
+        symbolLayers: [
+          {
+            type: "CIMPictureMarker",
+            enable: true,
+            size,
+            url: markerSvg(o, color),
+          },
+          {
+            type: "CIMVectorMarker",
+            enable: true,
+            size,
+            frame: { xmin: -5, ymin: -5, xmax: 5, ymax: 5 },
+            markerGraphics: [
+              {
+                type: "CIMMarkerGraphic",
+                geometry: { rings: [RING] },
+                symbol: {
+                  type: "CIMPolygonSymbol",
+                  symbolLayers: [
+                    {
+                      type: "CIMSolidStroke",
+                      enable: true,
+                      width: 1.6,
+                      color: [c.r, c.g, c.b, 255],
+                    },
+                    {
+                      type: "CIMSolidFill",
+                      enable: true,
+                      color: [c.r, c.g, c.b, 110],
+                    },
+                  ],
+                },
+              },
+            ],
+            animations: [
+              {
+                type: "CIMSymbolAnimationScale",
+                scaleFactor: 2.6,
+                animatedSymbolProperties: motion,
+              },
+              {
+                type: "CIMSymbolAnimationTransparency",
+                toTransparency: 100,
+                animatedSymbolProperties: motion,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+}
+
+/** Culverts sit every few hundred metres along roads; their pulses merge
+ * into solid bands, so they keep a still class-colored ring. */
+const NO_PULSE = new Set(["culv"]);
+
+/**
+ * Renderer used when an aimag or soums are chosen: every object is colored by
+ * its own class (5 levels) and points pulse in that color.
+ */
+export function overlayFocusRenderer(
+  o: Overlay,
+  fields: string[],
+  shrink = 0,
+) {
+  const symbol = (color: string) =>
+    o.geometry !== "point"
+      ? overlaySymbol(o, color)
+      : NO_PULSE.has(o.el)
+        ? new PictureMarkerSymbol({
+            url: markerSvg(o, color),
+            width: 18 - shrink,
+            height: 18 - shrink,
+          })
+        : pulseSymbol(o, color, 18 - shrink);
+  return new UniqueValueRenderer({
+    valueExpression: classExpression(fields),
+    valueExpressionTitle: overlayLabel(o),
+    defaultLabel: "Өгөгдөлгүй",
+    defaultSymbol: overlaySymbol(
+      o,
+      o.geometry === "polygon" ? NODATA_COLOR : "#8a96a3",
+    ),
+    legendOptions: { title: overlayLabel(o) },
+    uniqueValueInfos: [
+      ...(o.geometry === "polygon"
+        ? [
+            {
+              value: 0,
+              label: CLASS_LABELS[0],
+              symbol: overlaySymbol(o, NOEXP_COLOR),
+            },
+          ]
+        : []),
+      ...[1, 2, 3, 4, 5].map((c) => ({
+        value: c,
+        label: CLASS_LABELS[c],
+        symbol: symbol(CLASS_COLORS[c]),
+      })),
+    ],
+  });
 }
