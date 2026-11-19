@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CLASS_LABELS,
@@ -28,6 +28,8 @@ import styles from "./Dashboard.module.css";
 import Icon from "./Icon";
 import ClassPicker from "./ClassPicker";
 import DisabledHint from "./DisabledHint";
+import DashboardDrawer from "./DashboardDrawer";
+import { aimagRanking } from "@/lib/stats";
 
 const ROWS_URL = `${SOUM_LAYER_URL}/query?where=1%3D1&outFields=*&returnGeometry=false&f=json`;
 
@@ -77,6 +79,10 @@ export default function Dashboard() {
     ids: null,
     key: 0,
   });
+  const [dashboardOpen, setDashboardOpen] = useState(false);
+  const closeDashboard = useCallback(() => setDashboardOpen(false), []);
+  // Map width hidden behind the open dashboard (0 when closed / on phones).
+  const [mapCover, setMapCover] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -131,6 +137,17 @@ export default function Dashboard() {
     () => rows.find((r) => r.fid === selectedFid) ?? null,
     [rows, selectedFid],
   );
+
+  // Aimag ranking: every aimag, regardless of the area chosen in the toolbar.
+  const aimagRanks = useMemo(() => {
+    const noArea = applyFilters(rows, {
+      ...filters,
+      aimag: "",
+      soums: [],
+      q: "",
+    });
+    return aimagRanking(rows, noArea, filters);
+  }, [rows, filters]);
 
   const pickedSoum = useMemo(
     () => (picked ? soumOfPicked(rows, picked) : null),
@@ -195,6 +212,16 @@ export default function Dashboard() {
       setOverlayIds((cur) => cur.filter((id) => ids.includes(id)));
       if (picked && picked.mode !== patch.mode) clearPicked();
     }
+    // Choosing an element also draws its objects (coloured by risk) on the
+    // map; clearing it removes the layer again if that was the only one.
+    if (patch.element !== undefined && patch.element !== filters.element) {
+      const mode = patch.mode ?? filters.mode;
+      const prev = filters.element;
+      if (patch.element && OVERLAYS[mode].some((o) => o.id === patch.element))
+        setOverlays([patch.element]);
+      else if (!patch.element && overlays.length === 1 && overlays[0] === prev)
+        setOverlays([]);
+    }
     if (patch.aimag !== undefined || patch.soums !== undefined) {
       clearPicked();
       setSelectedFid(null);
@@ -216,6 +243,63 @@ export default function Dashboard() {
           ? rows.filter((r) => r.aimag_code === patch.aimag).map((r) => r.fid)
           : null,
       );
+    }
+  };
+
+  // Toggle: choosing the selected aimag again clears it.
+  const selectAimag = (code: string) =>
+    update({ aimag: filters.aimag === code ? "" : code });
+
+  /**
+   * Choosing a soum from a ranking list filters the map to it, exactly like
+   * the toolbar soum picker (only its objects stay), and opens its detail.
+   * Choosing the soum that is already the only filter clears the filter.
+   * `null` just closes the detail card.
+   */
+  const selectSoum = (fid: number | null) => {
+    if (fid == null) {
+      clearPicked();
+      setSelectedFid(null);
+      return;
+    }
+    const only = filters.soums.length === 1 && filters.soums[0] === fid;
+    update({ soums: only ? [] : [fid], q: "" });
+    if (!only) setSelectedFid(fid);
+  };
+
+  /**
+   * Dashboard → map: show an exposure element on the map. Turns on its object
+   * layer and, when a single hazard is chosen, colours soums by the element
+   * (optionally filtered to `classes`). Without `classes`, choosing the element
+   * that is already shown turns it off again.
+   */
+  const showElementOnMap = (el: string, classes?: number[]) => {
+    const hasLayer = OVERLAYS.e.some((o) => o.id === el);
+    const canFilter = filters.hazard !== "all";
+    const shown =
+      filters.mode === "e" &&
+      (hasLayer ? overlays.includes(el) : filters.element === el);
+    if (classes === undefined && shown) {
+      if (hasLayer) setOverlays(overlays.filter((id) => id !== el));
+      if (filters.element === el) update({ element: "" });
+      return;
+    }
+    update({
+      mode: "e",
+      ...(canFilter ? { element: el, classes: classes ?? [] } : {}),
+    });
+    if (hasLayer) setOverlays([el]);
+    // Re-fit the chosen area into the part of the map left visible.
+    focusOn(
+      filters.soums.length
+        ? filters.soums
+        : filters.aimag
+          ? rows.filter((r) => r.aimag_code === filters.aimag).map((r) => r.fid)
+          : null,
+    );
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      setDashboardOpen(false);
+      setMobilePanel("map");
     }
   };
 
@@ -464,6 +548,7 @@ export default function Dashboard() {
               focus={focus}
               onFocusMatched={() => focusOn(matchedIds)}
               areaFocus={!!filters.aimag || filters.soums.length > 0}
+              padRight={mapCover}
             />
           </div>
         </div>
@@ -475,6 +560,10 @@ export default function Dashboard() {
           onResize={(w) => resizePanel("right", w)}
         />
         <ResultPanel
+          aimagRanks={aimagRanks}
+          onSelectAimag={selectAimag}
+          dashboardOpen={dashboardOpen}
+          onToggleDashboard={() => setDashboardOpen((v) => !v)}
           filters={filters}
           update={update}
           total={rows.length}
@@ -484,15 +573,33 @@ export default function Dashboard() {
           elements={elements}
           loading={!rows.length && !error}
           error={error}
-          onSelect={(fid) => {
-            clearPicked();
-            setSelectedFid(fid);
-            if (fid != null) focusOn([fid]);
-          }}
+          onSelect={selectSoum}
           picked={picked}
           pickedSoum={pickedSoum}
           pickedVul={pickedVul}
           onClosePicked={clearPicked}
+        />
+        <DashboardDrawer
+          open={dashboardOpen}
+          onClose={closeDashboard}
+          filters={filters}
+          update={update}
+          total={rows.length}
+          matched={matched}
+          scopeLabel={scopeLabel}
+          aimagRanks={aimagRanks}
+          combos={combos}
+          overlays={overlays}
+          onShowElement={showElementOnMap}
+          onCover={setMapCover}
+          onSelectSoum={(fid) => {
+            selectSoum(fid);
+            if (window.matchMedia("(max-width: 900px)").matches) {
+              setDashboardOpen(false);
+              setMobilePanel("map");
+            }
+          }}
+          onSelectAimag={selectAimag}
         />
       </div>
       <footer className={styles.footer}>

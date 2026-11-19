@@ -135,6 +135,7 @@
   background: #f2f5f8;
 }
 .dashboard {
+  position: relative;
   display: grid;
   grid-template-columns: var(--left-w, 286px) 8px minmax(0, 1fr) 8px var(--right-w, 300px);
   gap: 0;
@@ -1183,4 +1184,105 @@
 .sectionLabel > span.caps:first-child,
 .listHeading > h3.caps {
   font-size: 11px;
+}
+
+/* Opens the dashboard sidebar. */
+.dashboardButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+  border: 1px solid #1b344c;
+  border-radius: 7px;
+  background: #1b344c;
+  color: #fff !important;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.dashboardButton > svg:last-child {
+  margin-left: auto;
+  transition: transform 0.2s;
+}
+.dashboardButton:hover {
+  background: #27455f;
+}
+.dashboardButton[aria-pressed="true"] {
+  background: #fff;
+  color: #1b344c !important;
+}
+.dashboardButton[aria-pressed="true"] > svg:last-child {
+  transform: rotate(180deg);
+}
+.dashboardButton:disabled {
+  border-color: #dce3e9;
+  background: #f1f4f7;
+  color: #8795a4 !important;
+  cursor: not-allowed;
+}
+
+/* Soum / aimag ranking switch above the sort buttons. */
+.levelToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0 15px 8px;
+}
+.levelToggle button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid #dce3e9;
+  border-radius: 6px;
+  background: #fff;
+  color: #63778a;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.levelToggle button:hover {
+  background: #f4f7fa;
+}
+.levelToggle button[aria-pressed="true"] {
+  border-color: #1b344c;
+  background: #1b344c;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Collapsible ranking section (same behaviour as the class distribution). */
+.listToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+.listToggle > svg {
+  color: #7a8a9b;
+  transition: transform 0.15s;
+}
+.listToggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+.rankBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.rankBody[hidden] {
+  display: none;
 }

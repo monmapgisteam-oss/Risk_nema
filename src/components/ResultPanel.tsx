@@ -2,24 +2,25 @@
 
 import { useMemo, useState } from "react";
 import {
-  CLASS_COLORS,
   CLASS_LABELS,
   ELEMENTS,
   HAZARDS,
-  NODATA_COLOR,
-  NOEXP_COLOR,
   classField,
-  scoreField,
   type Filters,
   type HazardId,
   type Picked,
   type SoumRow,
 } from "@/lib/riskConfig";
+import { colorOf, fmt, rankField, type AimagRank } from "@/lib/stats";
 import styles from "./Dashboard.module.css";
 import Icon from "./Icon";
 import ObjectDetail from "./ObjectDetail";
 
 type Props = {
+  aimagRanks: AimagRank[];
+  onSelectAimag: (code: string) => void;
+  dashboardOpen: boolean;
+  onToggleDashboard: () => void;
   filters: Filters;
   update: (patch: Partial<Filters>) => void;
   total: number;
@@ -35,20 +36,6 @@ type Props = {
   pickedVul: Record<string, unknown> | null;
   onClosePicked: () => void;
 };
-
-const colorOf = (c: unknown) =>
-  typeof c !== "number"
-    ? NODATA_COLOR
-    : c === 0
-      ? NOEXP_COLOR
-      : (CLASS_COLORS[c] ?? NODATA_COLOR);
-
-const fmt = (v: unknown) =>
-  typeof v === "number"
-    ? Number.isInteger(v)
-      ? String(v)
-      : v.toFixed(2)
-    : "–";
 
 function Cell({ cls, value }: { cls: unknown; value: unknown }) {
   return (
@@ -141,6 +128,10 @@ function Detail({
 }
 
 export default function ResultPanel({
+  aimagRanks,
+  onSelectAimag,
+  dashboardOpen,
+  onToggleDashboard,
   filters,
   update,
   total,
@@ -157,8 +148,10 @@ export default function ResultPanel({
   onClosePicked,
 }: Props) {
   const [byName, setByName] = useState(false);
+  const [level, setLevel] = useState<"soum" | "aimag">("aimag");
+  const [rankCollapsed, setRankCollapsed] = useState(false);
   const cf = classField(filters);
-  const sf = filters.element ? cf : scoreField(filters);
+  const sf = rankField(filters);
 
   const counts = useMemo(() => {
     const c: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -182,6 +175,14 @@ export default function ResultPanel({
     return list;
   }, [matched, byName, sf]);
 
+  // Aimags without a soum passing the filters drop out, like soums do.
+  const aimagList = useMemo(() => {
+    const list = aimagRanks.filter((a) => a.matched > 0);
+    if (byName) list.sort((a, b) => a.name.localeCompare(b.name, "mn"));
+    else list.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+    return list;
+  }, [aimagRanks, byName]);
+
   const classes = filters.element ? [0, 1, 2, 3, 4, 5] : [1, 2, 3, 4, 5];
   const max = Math.max(1, ...classes.map((c) => counts[c]));
 
@@ -191,6 +192,18 @@ export default function ResultPanel({
       aria-label="Үр дүн"
     >
       <div className={styles.resultSummary}>
+        <button
+          type="button"
+          className={styles.dashboardButton}
+          aria-pressed={dashboardOpen}
+          aria-controls="risk-dashboard"
+          disabled={loading || error}
+          onClick={onToggleDashboard}
+        >
+          <Icon name="chart" size={15} />
+          {dashboardOpen ? "Дашбоард хаах" : "Дашбоард"}
+          <Icon name="chevron" size={13} />
+        </button>
         <div className={styles.summaryCard} aria-busy={loading}>
           <div className={styles.summaryHeading}>
             <p className={styles.summaryTitle}>
@@ -263,8 +276,44 @@ export default function ResultPanel({
         )}
       </div>
       <div className={styles.listHeading}>
-        <h3 className={styles.caps}>Сумдын эрэмбэ</h3>
-        <span>{sorted.length} илэрц</span>
+        <h3 className={styles.caps}>
+          <button
+            type="button"
+            className={styles.listToggle}
+            aria-expanded={!rankCollapsed}
+            aria-controls="rank-body"
+            onClick={() => setRankCollapsed((v) => !v)}
+          >
+            <Icon name="chevron" size={13} />
+            {level === "soum" ? "Сумдын эрэмбэ" : "Аймгийн эрэмбэ"}
+          </button>
+        </h3>
+        <span>
+          {level === "soum" ? sorted.length : aimagList.length} илэрц
+        </span>
+      </div>
+      <div id="rank-body" className={styles.rankBody} hidden={rankCollapsed}>
+      <div
+        className={styles.levelToggle}
+        role="group"
+        aria-label="Эрэмбийн түвшин"
+      >
+        <button
+          type="button"
+          aria-pressed={level === "aimag"}
+          onClick={() => setLevel("aimag")}
+        >
+          <Icon name="map" size={13} />
+          Аймгийн эрэмбэ
+        </button>
+        <button
+          type="button"
+          aria-pressed={level === "soum"}
+          onClick={() => setLevel("soum")}
+        >
+          <Icon name="pin" size={13} />
+          Сумын эрэмбэ
+        </button>
       </div>
       <div className={styles.sort} role="group" aria-label="Эрэмбэ">
         <button
@@ -283,7 +332,58 @@ export default function ResultPanel({
         </button>
       </div>
 
-      <ul className={styles.list}>
+      {level === "aimag" && (
+        <ul className={styles.list}>
+          {loading && <li className={styles.note}>Ачаалж байна…</li>}
+          {error && <li className={styles.note}>Өгөгдөл ачаалагдсангүй</li>}
+          {!loading && !error && !aimagList.length && (
+            <li className={styles.note}>
+              <Icon name="search" size={26} />
+              <strong>Тохирох аймаг олдсонгүй</strong>
+              <span>Шүүлтүүрийн нөхцөлөө өөрчилж үзнэ үү.</span>
+            </li>
+          )}
+          {aimagList.map((a, index) => (
+            <li key={a.code}>
+              <button
+                type="button"
+                aria-current={filters.aimag === a.code}
+                title={
+                  filters.aimag === a.code
+                    ? "Аймгийн сонголтыг цуцлах"
+                    : `${a.name} аймгийг сонгох`
+                }
+                onClick={() => onSelectAimag(a.code)}
+              >
+                <span className={styles.rank}>
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span>
+                  {a.name}
+                  <small>
+                    {a.matched < a.total
+                      ? `${a.matched}/${a.total} сум`
+                      : `${a.total} сум`}
+                    {a.high > 0 && ` · ${a.high} өндөр`}
+                  </small>
+                </span>
+                <b
+                  className={styles.score}
+                  title={
+                    filters.element ? "Дундаж ангилал" : "Сумдын дундаж оноо"
+                  }
+                >
+                  <i style={{ background: colorOf(a.cls) }} />
+                  {fmt(a.score)}
+                </b>
+                <Icon name="chevron" size={13} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <ul className={styles.list} hidden={level !== "soum"}>
         {loading && <li className={styles.note}>Ачаалж байна…</li>}
         {error && <li className={styles.note}>Өгөгдөл ачаалагдсангүй</li>}
         {!loading && !error && !sorted.length && (
@@ -298,6 +398,11 @@ export default function ResultPanel({
             <button
               type="button"
               aria-current={selected?.fid === r.fid}
+              title={
+                filters.soums.length === 1 && filters.soums[0] === r.fid
+                  ? "Сумын шүүлтүүрийг цуцлах"
+                  : `Газрын зургийг ${r.soum_name} сумаар шүүх`
+              }
               onClick={() => onSelect(r.fid)}
             >
               <span className={styles.rank}>
@@ -316,6 +421,7 @@ export default function ResultPanel({
           </li>
         ))}
       </ul>
+      </div>
     </aside>
   );
 }

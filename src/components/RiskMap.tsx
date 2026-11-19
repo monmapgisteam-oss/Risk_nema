@@ -15,7 +15,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import FeatureFilter from "@arcgis/core/layers/support/FeatureFilter";
 import UniqueValueRenderer from "@arcgis/core/renderers/UniqueValueRenderer";
-import SimpleRenderer from "@arcgis/core/renderers/SimpleRenderer";
 import SimpleFillSymbol from "@arcgis/core/symbols/SimpleFillSymbol";
 import HighlightOptions from "@arcgis/core/views/support/HighlightOptions";
 import Graphic from "@arcgis/core/Graphic";
@@ -75,34 +74,48 @@ type Props = {
   onFocusMatched: () => void;
   /** An aimag or soums are chosen: color objects by class and pulse them. */
   areaFocus: boolean;
+  /** Width (px) of the map covered on the right, e.g. by the dashboard. */
+  padRight?: number;
 };
 
-const fill = (color: string) =>
+/** "#rrggbb" → [r, g, b, alpha]. */
+const rgba = (hex: string, alpha: number): number[] => [
+  parseInt(hex.slice(1, 3), 16),
+  parseInt(hex.slice(3, 5), 16),
+  parseInt(hex.slice(5, 7), 16),
+  alpha,
+];
+
+/**
+ * Fill alpha of the soum classes while object layers are drawn on top:
+ * barely visible, so the objects' own risk colours carry the map.
+ */
+const FADED_ALPHA = 0.24;
+
+const fill = (color: string, alpha = 1) =>
   new SimpleFillSymbol({
-    color,
-    outline: { color: [255, 255, 255, 0.9], width: 0.5 },
+    color: rgba(color, alpha),
+    outline:
+      alpha < 1
+        ? { color: [255, 255, 255, 0.55], width: 0.6 }
+        : { color: [255, 255, 255, 0.9], width: 0.5 },
   });
 
-function soumRenderer(field: string, showNoExp: boolean) {
+/**
+ * Soums coloured by class. With `alpha` < 1 (object layers on) the classes
+ * stay visible as a faint wash under the objects.
+ */
+function soumRenderer(field: string, showNoExp: boolean, alpha = 1) {
   return new UniqueValueRenderer({
     field,
-    defaultSymbol: fill(NODATA_COLOR),
+    defaultSymbol: fill(NODATA_COLOR, alpha * 0.5),
     uniqueValueInfos: [
-      ...(showNoExp ? [{ value: 0, symbol: fill(NOEXP_COLOR) }] : []),
-      ...CLASSES.map((c) => ({ value: c, symbol: fill(CLASS_COLORS[c]) })),
+      ...(showNoExp ? [{ value: 0, symbol: fill(NOEXP_COLOR, alpha) }] : []),
+      ...CLASSES.map((c) => ({
+        value: c,
+        symbol: fill(CLASS_COLORS[c], alpha),
+      })),
     ],
-  });
-}
-
-function soumBoundaryRenderer() {
-  return new SimpleRenderer({
-    label: "Сумын хил",
-    symbol: new SimpleFillSymbol({
-      // A transparent solid fill preserves clicks inside the soum polygon.
-      style: "solid",
-      color: [0, 0, 0, 0],
-      outline: { color: [226, 232, 240, 0.65], width: 0.65 },
-    }),
   });
 }
 
@@ -166,6 +179,7 @@ export default function RiskMap({
   focus,
   onFocusMatched,
   areaFocus,
+  padRight = 0,
 }: Props) {
   const mapRef = useRef<HTMLArcgisMapElement | null>(null);
   const homeRef = useRef<HTMLArcgisHomeElement | null>(null);
@@ -183,10 +197,17 @@ export default function RiskMap({
     (o) =>
       classifiedFields[`${mode}:${o.id}`] === `${hazard}:${areaFocus ? 1 : 0}`,
   );
-  const showClassLegend = !hasOverlays || classifiedOverlays.length > 0;
-  const showNoExpLegend = hasOverlays
-    ? classifiedOverlays.some((o) => o.geometry === "polygon")
-    : showNoExp;
+  // Soums keep their (faded) class colours under object layers, so the class
+  // legend is always relevant.
+  const showClassLegend = true;
+  const showNoExpLegend =
+    showNoExp ||
+    (hasOverlays && classifiedOverlays.some((o) => o.geometry === "polygon"));
+  const classLegendTitle = !hasOverlays
+    ? "Сумын үнэлгээ"
+    : classifiedOverlays.length
+      ? "Объект ба сумын үнэлгээ"
+      : "Сумын үнэлгээ (бүдэг)";
   const tipRef = useRef<HTMLDivElement | null>(null);
   const layerViewRef = useRef<FeatureLayerView | null>(null);
   useEffect(() => {
@@ -346,9 +367,8 @@ export default function RiskMap({
   useEffect(() => {
     soumLayer.set(
       "renderer",
-      hasOverlays ? soumBoundaryRenderer() : soumRenderer(field, showNoExp),
+      soumRenderer(field, showNoExp, hasOverlays ? FADED_ALPHA : 1),
     );
-    soumLayer.set("title", hasOverlays ? "Сумын хил" : "Сумын үнэлгээ");
   }, [soumLayer, field, showNoExp, hasOverlays]);
 
   // Hide soums that do not match the filters.
@@ -434,6 +454,12 @@ export default function RiskMap({
       handle?.remove();
     };
   }, [view, picked, areaFocus]);
+
+  // Keep zooms inside the part of the map that is not covered.
+  useEffect(() => {
+    if (!view) return;
+    view.set("padding", { ...view.padding, right: padRight });
+  }, [view, padRight]);
 
   useEffect(() => {
     if (!view || focus.key === 0) return;
@@ -667,9 +693,7 @@ export default function RiskMap({
           )}
           {showClassLegend && (
             <>
-              <strong>
-                {hasOverlays ? "Объектын үнэлгээ" : "Сумын үнэлгээ"}
-              </strong>
+              <strong>{classLegendTitle}</strong>
               {CLASSES.map((c) => (
                 <span key={c} className={styles.legendItem}>
                   <i style={{ background: CLASS_COLORS[c] }} />
