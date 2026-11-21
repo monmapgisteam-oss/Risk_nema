@@ -21,7 +21,11 @@ import HighlightOptions from "@arcgis/core/views/support/HighlightOptions";
 import Graphic from "@arcgis/core/Graphic";
 import GraphicsLayer from "@arcgis/core/layers/GraphicsLayer";
 import GroupLayer from "@arcgis/core/layers/GroupLayer";
+import TileLayer from "@arcgis/core/layers/TileLayer";
+import Basemap from "@arcgis/core/Basemap";
 import * as unionOperator from "@arcgis/core/geometry/operators/unionOperator";
+import * as labelPointOperator from "@arcgis/core/geometry/operators/labelPointOperator";
+import TextSymbol from "@arcgis/core/symbols/TextSymbol";
 import type { GeometryUnion } from "@arcgis/core/unionTypes";
 import SimpleLineSymbol from "@arcgis/core/symbols/SimpleLineSymbol";
 import SimpleMarkerSymbol from "@arcgis/core/symbols/SimpleMarkerSymbol";
@@ -38,12 +42,15 @@ import {
   NOEXP_COLOR,
   OVERLAYS,
   OVERLAY_SERVICE,
+  HAZARD_SERVICE,
   SOUM_LAYER_URL,
+  BORDER_URLS,
   overlayLabel,
   overlayWhere,
   type Mode,
   type Overlay,
   type Picked,
+  type HazardZone,
 } from "@/lib/riskConfig";
 import {
   objectClassFields,
@@ -75,6 +82,12 @@ type Props = {
   onFocusMatched: () => void;
   /** An aimag or soums are chosen: color objects by class and pulse them. */
   areaFocus: boolean;
+  /** Hazard zoning layer drawn under the soum outlines ("Аюул" view). */
+  hazardZone: HazardZone | null;
+  /** Soum layer visibility (the hazard view can switch outlines off). */
+  showSoums: boolean;
+  /** Aimag borders (the national border is always on). */
+  showAimags: boolean;
 };
 
 const fill = (color: string) =>
@@ -166,6 +179,9 @@ export default function RiskMap({
   focus,
   onFocusMatched,
   areaFocus,
+  hazardZone,
+  showSoums,
+  showAimags,
 }: Props) {
   const mapRef = useRef<HTMLArcgisMapElement | null>(null);
   const homeRef = useRef<HTMLArcgisHomeElement | null>(null);
@@ -211,11 +227,92 @@ export default function RiskMap({
     [],
   );
   const overlayLayers = useRef(new Map<string, OverlayEntry>());
+  // Mongolian aimag names, toggled from the map (built on first use).
+  const [aimagNames, setAimagNames] = useState(false);
+  const nameLayer = useMemo(
+    () => new GraphicsLayer({ title: "Аймгийн нэр", visible: false }),
+    [],
+  );
+  useEffect(() => {
+    nameLayer.set("visible", aimagNames);
+    if (!aimagNames || nameLayer.graphics.length) return;
+    let alive = true;
+    soumLayer
+      .queryFeatures({
+        where: "1=1",
+        outFields: ["aimag_code", "aimag_name"],
+        returnGeometry: true,
+        maxAllowableOffset: 0.01,
+      })
+      .then(({ features }) => {
+        if (!alive) return;
+        const groups = new Map<string, { name: string; parts: GeometryUnion[] }>();
+        for (const f of features) {
+          const code = String(f.attributes.aimag_code ?? "");
+          const g = groups.get(code) ?? { name: "", parts: [] };
+          g.name ||= String(f.attributes.aimag_name ?? "");
+          if (f.geometry) g.parts.push(f.geometry as GeometryUnion);
+          groups.set(code, g);
+        }
+        for (const { name, parts } of groups.values()) {
+          const area = name && parts.length ? unionOperator.executeMany(parts) : null;
+          if (!area) continue;
+          nameLayer.add(
+            new Graphic({
+              geometry: labelPointOperator.execute(area as GeometryUnion),
+              symbol: new TextSymbol({
+                text: name,
+                color: "#1b344c",
+                haloColor: [255, 255, 255, 0.95],
+                haloSize: 1.2,
+                font: { size: 8, weight: "bold", family: "sans-serif" },
+              }),
+            }),
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [aimagNames, nameLayer, soumLayer]);
+
+  // National and aimag borders, drawn just above the soums in every view.
+  const borders = useMemo(
+    () =>
+      new GroupLayer({
+        title: "Хил",
+        layers: [
+          new FeatureLayer({
+            url: BORDER_URLS.aimag,
+            title: "Аймгийн хил",
+            popupEnabled: false,
+            renderer: new SimpleRenderer({
+              symbol: new SimpleLineSymbol({
+                color: [250, 245, 225, 0.95],
+                width: 1.1,
+              }),
+            }),
+          }),
+          new FeatureLayer({
+            url: BORDER_URLS.national,
+            title: "Улсын хил",
+            popupEnabled: false,
+            renderer: new SimpleRenderer({
+              symbol: new SimpleLineSymbol({ color: "#2f3b47", width: 2 }),
+            }),
+          }),
+        ],
+      }),
+    [],
+  );
 
   // Add the soum layer and wire map clicks once the view is ready.
   useEffect(() => {
     if (!view) return;
     view.map?.add(soumLayer, 0);
+    view.map?.add(borders, 1);
+    view.map?.add(nameLayer);
     const outlineHighlight = new HighlightOptions({
       name: SOUM_OUTLINE_HIGHLIGHT,
       color: "#b8ddf7",
@@ -340,16 +437,105 @@ export default function RiskMap({
       move.remove();
       leave.remove();
       view.highlights.remove(outlineHighlight);
+      // Take the layers off again so a remount (or hot reload) never stacks
+      // a second copy of the borders and aimag names.
+      view.map?.removeMany([soumLayer, borders, nameLayer]);
     };
-  }, [view, soumLayer]);
+  }, [view, soumLayer, borders, nameLayer]);
 
   useEffect(() => {
     soumLayer.set(
       "renderer",
-      hasOverlays ? soumBoundaryRenderer() : soumRenderer(field, showNoExp),
+      hasOverlays || hazardZone
+        ? soumBoundaryRenderer()
+        : soumRenderer(field, showNoExp),
     );
-    soumLayer.set("title", hasOverlays ? "Сумын хил" : "Сумын үнэлгээ");
-  }, [soumLayer, field, showNoExp, hasOverlays]);
+    soumLayer.set(
+      "title",
+      hasOverlays || hazardZone ? "Сумын хил" : "Сумын үнэлгээ",
+    );
+  }, [soumLayer, field, showNoExp, hasOverlays, hazardZone]);
+
+  useEffect(() => {
+    soumLayer.set("visible", showSoums);
+  }, [soumLayer, showSoums]);
+
+  useEffect(() => {
+    const aimag = borders.layers.find((l) => l.title === "Аймгийн хил");
+    if (!aimag) return;
+    aimag.set("visible", showAimags);
+    // Light lines on the grey hazard relief; a dark navy line on the
+    // satellite V/E maps so they stand apart from the white soum outlines.
+    aimag.set(
+      "renderer",
+      new SimpleRenderer({
+        symbol: new SimpleLineSymbol(
+          hazardZone
+            ? { color: [250, 245, 225, 0.95], width: 1.1 }
+            : { color: "#0d2f57", width: 1.8 },
+        ),
+      }),
+    );
+  }, [borders, showAimags, hazardZone]);
+
+  // Hazard zoning: one polygon layer per hazard, colored by its 1–5 class.
+  useEffect(() => {
+    if (!view?.map || !hazardZone) return;
+    const map = view.map;
+    const layer = new FeatureLayer({
+      url: `${HAZARD_SERVICE}/${hazardZone.layerId}`,
+      title: hazardZone.label,
+      outFields: [hazardZone.field],
+      popupEnabled: false,
+      opacity: 0.72,
+      renderer: new UniqueValueRenderer({
+        field: hazardZone.field,
+        // Areas outside the zoning (class 0 / empty) stay see-through.
+        defaultSymbol: new SimpleFillSymbol({
+          color: [0, 0, 0, 0],
+          outline: { width: 0 },
+        }),
+        uniqueValueInfos: CLASSES.map((c) => ({
+          value: c,
+          label: CLASS_LABELS[c],
+          symbol: new SimpleFillSymbol({
+            color: CLASS_COLORS[c],
+            outline: { width: 0 },
+          }),
+        })),
+      }),
+    });
+    map.add(layer, 0);
+    return () => {
+      map.remove(layer);
+      layer.destroy();
+    };
+  }, [view, hazardZone]);
+
+  // Hazard maps read best on a grey shaded-relief base; restore the
+  // previous basemap when leaving the hazard view.
+  const hazardOn = !!hazardZone;
+  useEffect(() => {
+    const map = view?.map;
+    if (!map || !hazardOn) return;
+    const previous = map.basemap;
+    map.set(
+      "basemap",
+      new Basemap({
+        title: "Рельеф",
+        baseLayers: [
+          new TileLayer({
+            url: "https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer",
+            // A mid-grey relief like the printed hazard maps.
+            effect: "brightness(0.82) contrast(1.15)",
+          }),
+        ],
+      }),
+    );
+    return () => {
+      map.set("basemap", previous);
+    };
+  }, [view, hazardOn]);
 
   // Hide soums that do not match the filters.
   useEffect(() => {
@@ -535,10 +721,14 @@ export default function RiskMap({
     [...overlayLayers.current.values()]
       .sort((a, b) => order[a.overlay.geometry] - order[b.overlay.geometry])
       .forEach((entry, index) => map.reorder(added(entry), index + 1));
+    // Borders stay right above the soums, under every object layer;
+    // aimag names stay on top.
+    map.reorder(borders, map.layers.indexOf(soumLayer) + 1);
+    map.reorder(nameLayer, map.layers.length - 1);
     return () => {
       alive = false;
     };
-  }, [view, mode, hazard, overlays, areaFocus]);
+  }, [view, mode, hazard, overlays, areaFocus, soumLayer, borders, nameLayer]);
 
   // Element features follow the soum filter (server-side definition query).
   useEffect(() => {
@@ -642,6 +832,17 @@ export default function RiskMap({
         >
           <arcgis-basemap-gallery />
         </arcgis-expand>
+        <button
+          type="button"
+          slot="top-left"
+          className={styles.mapButton}
+          title="Аймгийн нэр"
+          aria-label="Аймгийн нэр"
+          aria-pressed={aimagNames}
+          onClick={() => setAimagNames((on) => !on)}
+        >
+          <Icon name="label" size={16} />
+        </button>
         <div slot="bottom-right" className={styles.legend}>
           {hasOverlays && (
             <details className={styles.objectLegend} open>

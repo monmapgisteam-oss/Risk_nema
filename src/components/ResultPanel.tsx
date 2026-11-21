@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   CLASS_COLORS,
   CLASS_LABELS,
@@ -9,7 +9,6 @@ import {
   NODATA_COLOR,
   NOEXP_COLOR,
   classField,
-  scoreField,
   type Filters,
   type HazardId,
   type Picked,
@@ -156,9 +155,7 @@ export default function ResultPanel({
   pickedVul,
   onClosePicked,
 }: Props) {
-  const [byName, setByName] = useState(false);
   const cf = classField(filters);
-  const sf = filters.element ? cf : scoreField(filters);
 
   const counts = useMemo(() => {
     const c: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -168,19 +165,6 @@ export default function ResultPanel({
     }
     return c;
   }, [matched, cf]);
-
-  const sorted = useMemo(() => {
-    const list = [...matched];
-    if (byName)
-      list.sort((a, b) =>
-        String(a.soum_name).localeCompare(String(b.soum_name), "mn"),
-      );
-    else
-      list.sort(
-        (a, b) => ((b[sf] as number) ?? -1) - ((a[sf] as number) ?? -1),
-      );
-    return list;
-  }, [matched, byName, sf]);
 
   const classes = filters.element ? [0, 1, 2, 3, 4, 5] : [1, 2, 3, 4, 5];
   const max = Math.max(1, ...classes.map((c) => counts[c]));
@@ -262,60 +246,6 @@ export default function ResultPanel({
           />
         )}
       </div>
-      <div className={styles.listHeading}>
-        <h3 className={styles.caps}>Сумдын эрэмбэ</h3>
-        <span>{sorted.length} илэрц</span>
-      </div>
-      <div className={styles.sort} role="group" aria-label="Эрэмбэ">
-        <button
-          type="button"
-          aria-pressed={!byName}
-          onClick={() => setByName(false)}
-        >
-          Оноогоор ↓
-        </button>
-        <button
-          type="button"
-          aria-pressed={byName}
-          onClick={() => setByName(true)}
-        >
-          Нэрээр А–Я
-        </button>
-      </div>
-
-      <ul className={styles.list}>
-        {loading && <li className={styles.note}>Ачаалж байна…</li>}
-        {error && <li className={styles.note}>Өгөгдөл ачаалагдсангүй</li>}
-        {!loading && !error && !sorted.length && (
-          <li className={styles.note}>
-            <Icon name="search" size={26} />
-            <strong>Тохирох сум олдсонгүй</strong>
-            <span>Шүүлтүүрийн нөхцөлөө өөрчилж үзнэ үү.</span>
-          </li>
-        )}
-        {sorted.map((r, index) => (
-          <li key={r.fid}>
-            <button
-              type="button"
-              aria-current={selected?.fid === r.fid}
-              onClick={() => onSelect(r.fid)}
-            >
-              <span className={styles.rank}>
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <span>
-                {r.soum_name}
-                <small>{r.aimag_name ?? ""}</small>
-              </span>
-              <b className={styles.score}>
-                <i style={{ background: colorOf(r[cf]) }} />
-                {fmt(r[sf])}
-              </b>
-              <Icon name="chevron" size={13} />
-            </button>
-          </li>
-        ))}
-      </ul>
     </aside>
   );
 }

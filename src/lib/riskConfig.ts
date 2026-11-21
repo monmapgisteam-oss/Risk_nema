@@ -1,10 +1,33 @@
 const BASE = "https://arcgis.ubhub.mn/arcgis/rest/services/Hosted";
 
 export const SOUM_LAYER_URL = `${BASE}/NEMA_VulExp_bySoum_Full/FeatureServer/0`;
+
+/** Reference boundaries (ZTHT base data): national border and aimag borders. */
+const ZTHT = "https://services.arcgis.com/HJzgwvlNIXssnQar/arcgis/rest/services/ZTHT_ALL_Data/FeatureServer";
+export const BORDER_URLS = {
+  national: `${ZTHT}/5`,
+  aimag: `${ZTHT}/11`,
+} as const;
 export const OVERLAY_SERVICE = {
   v: `${BASE}/Vul_risk/FeatureServer`,
   e: `${BASE}/exp_risk/FeatureServer`,
 } as const;
+
+/** Hazard zoning: per-hazard polygon layers with a 1–5 class field. */
+export const HAZARD_SERVICE = `${BASE}/Hazard/FeatureServer`;
+export type HazardZone = { layerId: number; field: string; label: string };
+export const HAZARD_ZONES: Record<string, HazardZone> = {
+  eq: { layerId: 23, field: "h01a", label: "Газар хөдлөлтийн эрчим (500 жил)" },
+  ds: { layerId: 24, field: "h02", label: "Шороон шуурганы бүс" },
+  ws: { layerId: 25, field: "h03a", label: "Салхин шуурганы бүс" },
+  ss: { layerId: 26, field: "h04a", label: "Цасан шуурганы бүс" },
+  dr: { layerId: 15, field: "h05", label: "Гангийн бүс" },
+  dz: { layerId: 28, field: "h06b", label: "Зудын бүс" },
+  fl: { layerId: 31, field: "h07d", label: "Үерийн нэгдсэн бүс" },
+  wf: { layerId: 7, field: "h08c", label: "Түймрийн нэгдсэн бүс" },
+  zd: { layerId: 3, field: "h09d", label: "Зоонозын нэгдсэн бүс" },
+  lt: { layerId: 2, field: "h11a", label: "Аянгын бүс" },
+};
 
 export type Mode = "v" | "e";
 export const MODES: { id: Mode; label: string }[] = [
@@ -64,11 +87,12 @@ export const ELEMENTS: Record<string, string> = {
 
 /** Class 1–5 colours; 0 = no exposure; null = no data. */
 export const CLASS_COLORS: Record<number, string> = {
-  1: "#1a9850",
-  2: "#a6d96a",
-  3: "#fee08b",
-  4: "#f46d43",
-  5: "#d73027",
+  // Official NEMA risk scale colors.
+  1: "#00b050", // 0, 176, 80
+  2: "#92d050", // 146, 208, 80
+  3: "#ffff00", // 255, 255, 0
+  4: "#ffc000", // 255, 192, 0
+  5: "#ff0000", // 255, 0, 0
 };
 export const NOEXP_COLOR = "#cfd6dd";
 export const NODATA_COLOR = "#eef1f4";
@@ -164,6 +188,10 @@ export const OVERLAYS: Record<Mode, Overlay[]> = {
 };
 
 export const overlayLabel = (o: Overlay) => o.label ?? ELEMENTS[o.el];
+
+/** Layers offered in the panel; the road/rail section layers are hidden. */
+export const panelOverlays = (mode: Mode) =>
+  OVERLAYS[mode].filter((o) => !o.id.endsWith("_sec"));
 
 /** A feature of an element layer picked on the map. */
 export type Picked = {

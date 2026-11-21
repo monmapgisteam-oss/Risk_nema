@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import {
   CLASS_LABELS,
   DEFAULT_FILTERS,
+  HAZARD_ZONES,
   ELEMENTS,
   OVERLAYS,
   OVERLAY_SERVICE,
@@ -30,6 +31,9 @@ import ClassPicker from "./ClassPicker";
 import DisabledHint from "./DisabledHint";
 
 const ROWS_URL = `${SOUM_LAYER_URL}/query?where=1%3D1&outFields=*&returnGeometry=false&f=json`;
+
+/** The app opens on the hazard view, which needs a single hazard. */
+const START_FILTERS: Filters = { ...DEFAULT_FILTERS, hazard: "wf" };
 
 export default function Dashboard() {
   // Rendered client-only (ssr:false), so the header slot already exists.
@@ -60,9 +64,15 @@ export default function Dashboard() {
     });
   const [rows, setRows] = useState<SoumRow[]>([]);
   const [error, setError] = useState(false);
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<Filters>(START_FILTERS);
   const [filterResetKey, setFilterResetKey] = useState(0);
   const [overlays, setOverlayIds] = useState<string[]>([]);
+  // "Аюул": show the hazard zoning of the chosen hazard instead of V/E.
+  const [hazardView, setHazardView] = useState(true);
+  // Soum outlines over the hazard zoning; off by default.
+  const [soumOutlines, setSoumOutlines] = useState(false);
+  // Aimag borders in the hazard view; off by default.
+  const [aimagOutlines, setAimagOutlines] = useState(false);
   const [picked, setPicked] = useState<Picked | null>(null);
   // Vulnerability-layer attributes of the picked object (its own CVI classes).
   const [pickedVul, setPickedVul] = useState<Record<string, unknown> | null>(
@@ -220,7 +230,8 @@ export default function Dashboard() {
   };
 
   const reset = () => {
-    setFilters(DEFAULT_FILTERS);
+    setFilters(START_FILTERS);
+    setHazardView(true);
     setFilterResetKey((key) => key + 1);
     setOverlayIds([]);
     clearPicked();
@@ -291,7 +302,11 @@ export default function Dashboard() {
     <header className={styles.toolbar}>
       <div className={styles.toolbarTitle}>
         <nav className={styles.crumbs} aria-label="Үнэлгээ">
-          <span>{MODES.find((m) => m.id === filters.mode)?.label}</span>
+          <span>
+            {hazardView
+              ? "Аюул"
+              : MODES.find((m) => m.id === filters.mode)?.label}
+          </span>
           <Icon name="chevron" size={13} />
           <span aria-current="page">
             {filters.hazard === "all"
@@ -434,6 +449,15 @@ export default function Dashboard() {
           update={update}
           overlays={overlays}
           setOverlays={setOverlays}
+          hazardView={hazardView}
+          soumOutlines={soumOutlines}
+          setSoumOutlines={setSoumOutlines}
+          aimagOutlines={aimagOutlines}
+          setAimagOutlines={setAimagOutlines}
+          setHazardView={(on) => {
+            setHazardView(on);
+            if (on) clearPicked();
+          }}
         />
         <PanelResizer
           side="left"
@@ -451,7 +475,8 @@ export default function Dashboard() {
               showNoExp={!!filters.element}
               matchedIds={matchedIds}
               matchedCodes={matchedCodes}
-              overlays={overlays}
+              // Object layers belong to the V/E views, not the hazard view.
+              overlays={hazardView ? [] : overlays}
               selectedFid={selectedFid}
               selectedCode={selected ? Number(selected.code) : null}
               onSelect={(fid) => {
@@ -463,6 +488,17 @@ export default function Dashboard() {
               onPick={pick}
               focus={focus}
               onFocusMatched={() => focusOn(matchedIds)}
+              hazardZone={
+                hazardView ? (HAZARD_ZONES[filters.hazard] ?? null) : null
+              }
+              showSoums={!hazardView || soumOutlines}
+              // Hazard view: the panel toggle. V/E: shown once an aimag or
+              // soums are chosen.
+              showAimags={
+                hazardView
+                  ? aimagOutlines
+                  : !!filters.aimag || filters.soums.length > 0
+              }
               areaFocus={!!filters.aimag || filters.soums.length > 0}
             />
           </div>

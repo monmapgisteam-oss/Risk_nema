@@ -1184,3 +1184,16 @@
 .listHeading > h3.caps {
   font-size: 11px;
 }
+/* A group with a single layer spans the full row. */
+.overlayGrid > :only-child {
+  grid-column: 1 / -1;
+}
+
+.segmented.segmented3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* Hazard view: one hazard per row. */
+.hazardGrid.hazardList {
+  grid-template-columns: minmax(0, 1fr);
+}

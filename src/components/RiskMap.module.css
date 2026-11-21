@@ -144,3 +144,8 @@
   font-size: 10px;
   color: #6b7b8d;
 }
+
+.mapButton[aria-pressed="true"] {
+  background: #e3edf6;
+  color: #142b42;
+}
