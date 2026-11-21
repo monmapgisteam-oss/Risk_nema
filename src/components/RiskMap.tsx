@@ -88,25 +88,46 @@ type Props = {
   showSoums: boolean;
   /** Aimag borders (the national border is always on). */
   showAimags: boolean;
+  /** Width (px) of the map covered on the right, e.g. by the dashboard. */
+  padRight?: number;
 };
 
-const fill = (color: string) =>
+/** "#rrggbb" → [r, g, b, alpha]. */
+const rgba = (hex: string, alpha: number): number[] => [
+  parseInt(hex.slice(1, 3), 16),
+  parseInt(hex.slice(3, 5), 16),
+  parseInt(hex.slice(5, 7), 16),
+  alpha,
+];
+
+const fill = (color: string, alpha = 1) =>
   new SimpleFillSymbol({
-    color,
-    outline: { color: [255, 255, 255, 0.9], width: 0.5 },
+    color: rgba(color, alpha),
+    outline:
+      alpha < 1
+        ? { color: [255, 255, 255, 0.55], width: 0.6 }
+        : { color: [255, 255, 255, 0.9], width: 0.5 },
   });
 
-function soumRenderer(field: string, showNoExp: boolean) {
+/**
+ * Soums coloured by class. With `alpha` < 1 (object layers on) the classes
+ * stay visible as a faint wash under the objects.
+ */
+function soumRenderer(field: string, showNoExp: boolean, alpha = 1) {
   return new UniqueValueRenderer({
     field,
-    defaultSymbol: fill(NODATA_COLOR),
+    defaultSymbol: fill(NODATA_COLOR, alpha * 0.5),
     uniqueValueInfos: [
-      ...(showNoExp ? [{ value: 0, symbol: fill(NOEXP_COLOR) }] : []),
-      ...CLASSES.map((c) => ({ value: c, symbol: fill(CLASS_COLORS[c]) })),
+      ...(showNoExp ? [{ value: 0, symbol: fill(NOEXP_COLOR, alpha) }] : []),
+      ...CLASSES.map((c) => ({
+        value: c,
+        symbol: fill(CLASS_COLORS[c], alpha),
+      })),
     ],
   });
 }
 
+/** Soums as outlines only (object layers on, or the hazard view). */
 function soumBoundaryRenderer() {
   return new SimpleRenderer({
     label: "Сумын хил",
@@ -182,6 +203,7 @@ export default function RiskMap({
   hazardZone,
   showSoums,
   showAimags,
+  padRight = 0,
 }: Props) {
   const mapRef = useRef<HTMLArcgisMapElement | null>(null);
   const homeRef = useRef<HTMLArcgisHomeElement | null>(null);
@@ -199,10 +221,13 @@ export default function RiskMap({
     (o) =>
       classifiedFields[`${mode}:${o.id}`] === `${hazard}:${areaFocus ? 1 : 0}`,
   );
+  // Under object layers the soums are outlines only, so the class legend
+  // describes the objects.
   const showClassLegend = !hasOverlays || classifiedOverlays.length > 0;
   const showNoExpLegend = hasOverlays
     ? classifiedOverlays.some((o) => o.geometry === "polygon")
     : showNoExp;
+  const classLegendTitle = hasOverlays ? "Объектын үнэлгээ" : "Сумын үнэлгээ";
   const tipRef = useRef<HTMLDivElement | null>(null);
   const layerViewRef = useRef<FeatureLayerView | null>(null);
   useEffect(() => {
@@ -621,6 +646,12 @@ export default function RiskMap({
     };
   }, [view, picked, areaFocus]);
 
+  // Keep zooms inside the part of the map that is not covered.
+  useEffect(() => {
+    if (!view) return;
+    view.set("padding", { ...view.padding, right: padRight });
+  }, [view, padRight]);
+
   useEffect(() => {
     if (!view || focus.key === 0) return;
     if (!focus.ids) {
@@ -868,9 +899,7 @@ export default function RiskMap({
           )}
           {showClassLegend && (
             <>
-              <strong>
-                {hasOverlays ? "Объектын үнэлгээ" : "Сумын үнэлгээ"}
-              </strong>
+              <strong>{classLegendTitle}</strong>
               {CLASSES.map((c) => (
                 <span key={c} className={styles.legendItem}>
                   <i style={{ background: CLASS_COLORS[c] }} />

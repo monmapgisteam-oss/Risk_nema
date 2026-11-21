@@ -2,23 +2,23 @@
 
 import { useMemo } from "react";
 import {
-  CLASS_COLORS,
   CLASS_LABELS,
   ELEMENTS,
   HAZARDS,
-  NODATA_COLOR,
-  NOEXP_COLOR,
   classField,
   type Filters,
   type HazardId,
   type Picked,
   type SoumRow,
 } from "@/lib/riskConfig";
+import { colorOf, fmt } from "@/lib/stats";
 import styles from "./Dashboard.module.css";
 import Icon from "./Icon";
 import ObjectDetail from "./ObjectDetail";
 
 type Props = {
+  dashboardOpen: boolean;
+  onToggleDashboard: () => void;
   filters: Filters;
   update: (patch: Partial<Filters>) => void;
   total: number;
@@ -34,20 +34,6 @@ type Props = {
   pickedVul: Record<string, unknown> | null;
   onClosePicked: () => void;
 };
-
-const colorOf = (c: unknown) =>
-  typeof c !== "number"
-    ? NODATA_COLOR
-    : c === 0
-      ? NOEXP_COLOR
-      : (CLASS_COLORS[c] ?? NODATA_COLOR);
-
-const fmt = (v: unknown) =>
-  typeof v === "number"
-    ? Number.isInteger(v)
-      ? String(v)
-      : v.toFixed(2)
-    : "–";
 
 function Cell({ cls, value }: { cls: unknown; value: unknown }) {
   return (
@@ -140,6 +126,8 @@ function Detail({
 }
 
 export default function ResultPanel({
+  dashboardOpen,
+  onToggleDashboard,
   filters,
   update,
   total,
@@ -175,6 +163,18 @@ export default function ResultPanel({
       aria-label="Үр дүн"
     >
       <div className={styles.resultSummary}>
+        <button
+          type="button"
+          className={styles.dashboardButton}
+          aria-pressed={dashboardOpen}
+          aria-controls="risk-dashboard"
+          disabled={loading || error}
+          onClick={onToggleDashboard}
+        >
+          <Icon name="chart" size={15} />
+          {dashboardOpen ? "Дашбоард хаах" : "Дашбоард"}
+          <Icon name="chevron" size={13} />
+        </button>
         <div className={styles.summaryCard} aria-busy={loading}>
           <div className={styles.summaryHeading}>
             <p className={styles.summaryTitle}>
