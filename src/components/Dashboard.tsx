@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CLASS_LABELS,
@@ -30,6 +30,7 @@ import Icon from "./Icon";
 import ClassPicker from "./ClassPicker";
 import DisabledHint from "./DisabledHint";
 import DashboardDrawer from "./DashboardDrawer";
+import HazardStats from "./HazardStats";
 import { aimagRanking } from "@/lib/stats";
 
 const ROWS_URL = `${SOUM_LAYER_URL}/query?where=1%3D1&outFields=*&returnGeometry=false&f=json`;
@@ -71,6 +72,8 @@ export default function Dashboard() {
   const [overlays, setOverlayIds] = useState<string[]>([]);
   // "Аюул": show the hazard zoning of the chosen hazard instead of V/E.
   const [hazardView, setHazardView] = useState(true);
+  /** Aimag opened in the hazard panel: zoomed to and outlined on the map. */
+  const [hazardAimag, setHazardAimag] = useState<string | null>(null);
   // Soum outlines over the hazard zoning; off by default.
   const [soumOutlines, setSoumOutlines] = useState(false);
   // Aimag borders in the hazard view; off by default.
@@ -89,10 +92,6 @@ export default function Dashboard() {
     ids: null,
     key: 0,
   });
-  const [dashboardOpen, setDashboardOpen] = useState(false);
-  const closeDashboard = useCallback(() => setDashboardOpen(false), []);
-  // Map width hidden behind the open dashboard (0 when closed / on phones).
-  const [mapCover, setMapCover] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -307,10 +306,7 @@ export default function Dashboard() {
           ? rows.filter((r) => r.aimag_code === filters.aimag).map((r) => r.fid)
           : null,
     );
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      setDashboardOpen(false);
-      setMobilePanel("map");
-    }
+    if (window.matchMedia("(max-width: 900px)").matches) setMobilePanel("map");
   };
 
   const reset = () => {
@@ -584,57 +580,65 @@ export default function Dashboard() {
                   : !!filters.aimag || filters.soums.length > 0
               }
               areaFocus={!!filters.aimag || filters.soums.length > 0}
-              padRight={mapCover}
+              outlineAimag={hazardView ? hazardAimag : null}
             />
           </div>
         </div>
         <PanelResizer
           side="right"
           label="Үр дүнгийн самбарын өргөн"
-          min={240}
-          max={560}
+          min={320}
+          max={820}
           onResize={(w) => resizePanel("right", w)}
         />
         <ResultPanel
-          dashboardOpen={dashboardOpen}
-          onToggleDashboard={() => setDashboardOpen((v) => !v)}
           filters={filters}
           update={update}
-          total={rows.length}
-          matched={matched}
-          scopeLabel={scopeLabel}
           selected={selected}
           elements={elements}
-          loading={!rows.length && !error}
-          error={error}
           onSelect={selectSoum}
           picked={picked}
           pickedSoum={pickedSoum}
           pickedVul={pickedVul}
           onClosePicked={clearPicked}
-        />
-        <DashboardDrawer
-          open={dashboardOpen}
-          onClose={closeDashboard}
-          filters={filters}
-          update={update}
-          total={rows.length}
-          matched={matched}
-          scopeLabel={scopeLabel}
-          aimagRanks={aimagRanks}
-          combos={combos}
-          overlays={overlays}
-          onShowElement={showElementOnMap}
-          onCover={setMapCover}
-          onSelectSoum={(fid) => {
-            selectSoum(fid);
-            if (window.matchMedia("(max-width: 900px)").matches) {
-              setDashboardOpen(false);
-              setMobilePanel("map");
-            }
-          }}
-          onSelectAimag={selectAimag}
-        />
+        >
+          {hazardView && HAZARD_ZONES[filters.hazard] ? (
+            <HazardStats
+              zone={HAZARD_ZONES[filters.hazard]}
+              hazard={filters.hazard}
+              openAimag={hazardAimag}
+              onOpenAimag={(code) => {
+                setHazardAimag(code);
+                focusOn(
+                  code
+                    ? rows
+                        .filter((r) => r.aimag_code === code)
+                        .map((r) => r.fid)
+                    : null,
+                );
+              }}
+            />
+          ) : (
+            <DashboardDrawer
+              docked
+              filters={filters}
+              update={update}
+              total={rows.length}
+              matched={matched}
+              scopeLabel={scopeLabel}
+              aimagRanks={aimagRanks}
+              combos={combos}
+              overlays={overlays}
+              onShowElement={showElementOnMap}
+              onSelectSoum={(fid) => {
+                selectSoum(fid);
+                if (window.matchMedia("(max-width: 900px)").matches)
+                  setMobilePanel("map");
+              }}
+              onSelectAimag={selectAimag}
+            />
+          )}
+        </ResultPanel>
       </div>
       <footer className={styles.footer}>
         <span>

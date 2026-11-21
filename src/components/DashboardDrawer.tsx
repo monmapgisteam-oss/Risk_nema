@@ -17,8 +17,10 @@ import Icon from "./Icon";
 import styles from "./DashboardDrawer.module.css";
 
 type Props = {
-  open: boolean;
-  onClose: () => void;
+  /** Docked: the dashboard is the right-hand panel itself (always open). */
+  docked?: boolean;
+  open?: boolean;
+  onClose?: () => void;
   filters: Filters;
   update: (patch: Partial<Filters>) => void;
   total: number;
@@ -32,7 +34,7 @@ type Props = {
   /** Show an exposure element (and optionally its classes) on the map. */
   onShowElement: (el: string, classes?: number[]) => void;
   /** Reports how many px of the map the open drawer covers. */
-  onCover: (px: number) => void;
+  onCover?: (px: number) => void;
   onSelectSoum: (fid: number) => void;
   onSelectAimag: (code: string) => void;
 };
@@ -45,7 +47,8 @@ const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) : 0);
 
 /** Slide-in sidebar summarising the soums that pass the current filters. */
 export default function DashboardDrawer({
-  open,
+  docked = false,
+  open: openProp = false,
   onClose,
   filters,
   update,
@@ -60,13 +63,15 @@ export default function DashboardDrawer({
   onSelectSoum,
   onSelectAimag,
 }: Props) {
+  const open = docked || openProp;
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const rootRef = useRef<HTMLElement | null>(null);
 
   // Tell the map how much of it is hidden (none on phones: full-screen sheet).
   useEffect(() => {
     const el = rootRef.current;
-    if (!open || !el) {
+    if (!onCover) return;
+    if (docked || !open || !el) {
       onCover(0);
       return;
     }
@@ -80,17 +85,17 @@ export default function DashboardDrawer({
       ro.disconnect();
       phone.removeEventListener("change", report);
     };
-  }, [open, onCover]);
+  }, [open, docked, onCover]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || docked || !onClose) return;
     closeRef.current?.focus();
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [open, onClose]);
+  }, [open, docked, onClose]);
 
   const mode = filters.mode;
   const other = mode === "v" ? "e" : "v";
@@ -218,6 +223,7 @@ export default function DashboardDrawer({
       id="risk-dashboard"
       className={styles.drawer}
       data-open={open}
+      data-docked={docked}
       aria-label="Дашбоард"
       aria-hidden={!open}
       inert={!open}
@@ -233,16 +239,18 @@ export default function DashboardDrawer({
           </p>
           <h2>{scopeLabel}</h2>
         </div>
-        <button
-          ref={closeRef}
-          type="button"
-          className={styles.close}
-          onClick={onClose}
-          aria-label="Дашбоард хаах"
-          title="Хаах (Esc)"
-        >
-          ×
-        </button>
+        {!docked && (
+          <button
+            ref={closeRef}
+            type="button"
+            className={styles.close}
+            onClick={onClose}
+            aria-label="Дашбоард хаах"
+            title="Хаах (Esc)"
+          >
+            ×
+          </button>
+        )}
       </header>
 
       <div className={styles.body}>
@@ -275,45 +283,45 @@ export default function DashboardDrawer({
           </div>
         </section>
 
-        <section className={styles.card}>
-          <h3>
-            Ангиллын тархалт
-            <span>{stats.classified} сум</span>
-          </h3>
-          <div className={styles.stack} role="group" aria-label="Ангиллаар шүүх">
-            {classes.map((c) =>
-              stats.counts[c] ? (
-                <button
-                  key={c}
-                  type="button"
-                  style={{
-                    flexGrow: stats.counts[c],
-                    background: colorOf(c),
-                  }}
-                  aria-pressed={filters.classes.includes(c)}
-                  title={`${CLASS_LABELS[c]}: ${stats.counts[c]} сум (${pct(stats.counts[c], stats.classified)}%)`}
-                  onClick={() =>
-                    update({
-                      classes: filters.classes.includes(c)
-                        ? filters.classes.filter((x) => x !== c)
-                        : [...filters.classes, c],
-                    })
-                  }
-                />
-              ) : null,
-            )}
-          </div>
-          <ul className={styles.legend}>
-            {classes.map((c) => (
-              <li key={c}>
-                <i style={{ background: colorOf(c) }} />
-                {CLASS_LABELS[c]}
+        <details className={`${styles.card} ${styles.dist}`} open>
+          <summary>
+            <span className={styles.distTitle}>
+              <Icon name="chevron" size={13} />
+              Ангиллын тархалт
+            </span>
+            <span>Сумын тоо</span>
+          </summary>
+          {(() => {
+            const top = Math.max(1, ...classes.map((c) => stats.counts[c]));
+            return classes.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={styles.distRow}
+                aria-pressed={filters.classes.includes(c)}
+                title={`${CLASS_LABELS[c]}: ${stats.counts[c]} сум (${pct(stats.counts[c], stats.classified)}%)`}
+                onClick={() =>
+                  update({
+                    classes: filters.classes.includes(c)
+                      ? filters.classes.filter((x) => x !== c)
+                      : [...filters.classes, c],
+                  })
+                }
+              >
+                <span>{CLASS_LABELS[c]}</span>
+                <span className={styles.distTrack}>
+                  <i
+                    style={{
+                      width: `${(stats.counts[c] / top) * 100}%`,
+                      background: colorOf(c),
+                    }}
+                  />
+                </span>
                 <b>{stats.counts[c]}</b>
-                <small>{pct(stats.counts[c], stats.classified)}%</small>
-              </li>
-            ))}
-          </ul>
-        </section>
+              </button>
+            ));
+          })()}
+        </details>
 
         <section className={styles.card}>
           <h3>
@@ -458,12 +466,6 @@ export default function DashboardDrawer({
               Сонгосон нутаг дэвсгэрт өртөх байдлын элементийн мэдээлэл алга.
             </p>
           )}
-          <p className={styles.hint}>
-            {exposureClickable
-              ? "Элементийн нэр дээр дарж газрын зураг дээр давхарга болон ангиллаар харуулна, тоон дээр дарж тухайн түвшний сумдыг газрын зураг дээр шүүнэ."
-              : "Давхаргатай элементийн нэр дээр дарж объектуудыг газрын зураг дээр харуулна. Түвшнээр шүүхийн тулд нэг аюулт үзэгдэл сонгоно уу."}{" "}
-            Өндөр түвшний эзлэх хувиар эрэмбэлсэн.
-          </p>
         </section>
 
         <section className={styles.card}>
@@ -532,11 +534,6 @@ export default function DashboardDrawer({
             </table>
             <span className={styles.axisX}>{otherLabel} →</span>
           </div>
-          {crossClickable && (
-            <p className={styles.hint}>
-              Нүдэн дээр дарж тухайн хослолоор шүүнэ.
-            </p>
-          )}
         </section>
 
         <div className={styles.twoCol}>

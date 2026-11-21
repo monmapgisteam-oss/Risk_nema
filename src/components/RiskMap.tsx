@@ -90,6 +90,8 @@ type Props = {
   showAimags: boolean;
   /** Width (px) of the map covered on the right, e.g. by the dashboard. */
   padRight?: number;
+  /** Aimag code whose border is drawn bold (chosen in the hazard panel). */
+  outlineAimag?: string | null;
 };
 
 /** "#rrggbb" → [r, g, b, alpha]. */
@@ -204,6 +206,7 @@ export default function RiskMap({
   showSoums,
   showAimags,
   padRight = 0,
+  outlineAimag = null,
 }: Props) {
   const mapRef = useRef<HTMLArcgisMapElement | null>(null);
   const homeRef = useRef<HTMLArcgisHomeElement | null>(null);
@@ -302,6 +305,50 @@ export default function RiskMap({
     };
   }, [aimagNames, nameLayer, soumLayer]);
 
+  // Border of the aimag chosen in the hazard panel (soums dissolved).
+  const aimagLine = useMemo(
+    () => new GraphicsLayer({ title: "Сонгосон аймаг" }),
+    [],
+  );
+  useEffect(() => {
+    aimagLine.removeAll();
+    if (!outlineAimag || !/^\w+$/.test(outlineAimag)) return;
+    let alive = true;
+    soumLayer
+      .queryFeatures({
+        where: `aimag_code = '${outlineAimag}'`,
+        // Full detail: generalized soums leave slivers inside the union.
+        returnGeometry: true,
+      })
+      .then(({ features }) => {
+        const parts = features
+          .map((f) => f.geometry as GeometryUnion | null)
+          .filter((g): g is GeometryUnion => !!g);
+        const area = alive && parts.length ? unionOperator.executeMany(parts) : null;
+        if (!area) return;
+        aimagLine.removeAll();
+        // White casing under a dark line, so it reads on every zone color.
+        const casing: [number[] | string, number][] = [
+          [[255, 255, 255, 0.9], 3],
+          ["#10263a", 1.3],
+        ];
+        for (const [color, width] of casing)
+          aimagLine.add(
+            new Graphic({
+              geometry: area,
+              symbol: new SimpleFillSymbol({
+                color: [0, 0, 0, 0],
+                outline: new SimpleLineSymbol({ color, width }),
+              }),
+            }),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [outlineAimag, aimagLine, soumLayer]);
+
   // National and aimag borders, drawn just above the soums in every view.
   const borders = useMemo(
     () =>
@@ -337,6 +384,7 @@ export default function RiskMap({
     if (!view) return;
     view.map?.add(soumLayer, 0);
     view.map?.add(borders, 1);
+    view.map?.add(aimagLine);
     view.map?.add(nameLayer);
     const outlineHighlight = new HighlightOptions({
       name: SOUM_OUTLINE_HIGHLIGHT,
@@ -464,9 +512,9 @@ export default function RiskMap({
       view.highlights.remove(outlineHighlight);
       // Take the layers off again so a remount (or hot reload) never stacks
       // a second copy of the borders and aimag names.
-      view.map?.removeMany([soumLayer, borders, nameLayer]);
+      view.map?.removeMany([soumLayer, borders, aimagLine, nameLayer]);
     };
-  }, [view, soumLayer, borders, nameLayer]);
+  }, [view, soumLayer, borders, aimagLine, nameLayer]);
 
   useEffect(() => {
     soumLayer.set(

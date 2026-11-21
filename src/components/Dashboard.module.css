@@ -137,7 +137,7 @@
 .dashboard {
   position: relative;
   display: grid;
-  grid-template-columns: var(--left-w, 286px) 8px minmax(0, 1fr) 8px var(--right-w, 300px);
+  grid-template-columns: var(--left-w, 286px) 8px minmax(0, 1fr) 8px var(--right-w, 460px);
   gap: 0;
   min-height: 0;
   padding: 8px 8px 0;
@@ -784,7 +784,7 @@
 }
 @media (min-width: 1700px) {
   .dashboard {
-    grid-template-columns: var(--left-w, 306px) 10px minmax(0, 1fr) 10px var(--right-w, 320px);
+    grid-template-columns: var(--left-w, 306px) 10px minmax(0, 1fr) 10px var(--right-w, 520px);
     gap: 0;
     padding: 10px 10px 0;
   }
@@ -805,7 +805,7 @@
 }
 @media (max-width: 1190px) and (min-width: 901px) {
   .dashboard {
-    grid-template-columns: var(--left-w, 252px) 8px minmax(0, 1fr) 8px var(--right-w, 262px);
+    grid-template-columns: var(--left-w, 252px) 8px minmax(0, 1fr) 8px var(--right-w, 380px);
     gap: 0;
     padding: 8px 8px 0;
   }
@@ -1197,6 +1197,7 @@
 /* Hazard view: one hazard per row. */
 .hazardGrid.hazardList {
   grid-template-columns: minmax(0, 1fr);
+}
 
 /* Opens the dashboard sidebar. */
 .dashboardButton {
